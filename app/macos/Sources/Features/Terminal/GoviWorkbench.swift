@@ -106,14 +106,22 @@ struct GoviWorkbench<Content: View>: View {
                             GoviIconButton(symbol: "list.bullet.rectangle", help: "Tasks · GitHub and Linear", on: tasksOpen) {
                                 if tasksOpen { closeTasks() } else { openTasks() }
                             }
-                            GoviIconButton(symbol: activity.attentionCount > 0 ? "bell.badge" : "bell", help: "Notifications · \(activity.attentionCount)", on: attentionOpen) { toggleAttention() }
+                            GoviIconButton(
+                                symbol: activity.attentionCount > 0 ? "bell.badge" : "bell",
+                                help: "Notifications · \(activity.attentionCount)", on: attentionOpen
+                            ) { toggleAttention() }
                             GoviIconButton(symbol: "plus", help: "New terminal or agent", on: launcherOpen) {
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
-                                    attentionOpen = false; launcherOpen.toggle()
+                                    attentionOpen = false
+                                    launcherOpen.toggle()
                                 }
                             }
-                            GoviIconButton(symbol: focusMode ? "arrow.down.right.and.arrow.up.left" : "viewfinder", help: "Toggle focus mode", on: focusMode) {
-                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { focusMode.toggle() }; focusTerminal()
+                            GoviIconButton(
+                                symbol: focusMode ? "arrow.down.right.and.arrow.up.left" : "viewfinder", help: "Toggle focus mode",
+                                on: focusMode
+                            ) {
+                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { focusMode.toggle() }
+                                focusTerminal()
                             }
                             GoviIconButton(symbol: "slider.horizontal.3", help: "Settings", on: settingsOpen) { toggleSettings() }
                         }.modifier(GoviGlassGroup()).padding(.trailing, 12)
@@ -141,7 +149,10 @@ struct GoviWorkbench<Content: View>: View {
         VStack(spacing: 8) {
             if let surface { GoviRecoveryNotice(surface: surface) }
             if !settingsOpen && !tasksOpen, let link = surface?.goviLaunch.issue {
-                GoviLinkedTaskBanner(link: link, openTasks: openTasks) { gitOpen = true; gitExpanded = true }
+                GoviLinkedTaskBanner(link: link, openTasks: openTasks) {
+                    gitOpen = true
+                    gitExpanded = true
+                }
             }
             content().environment(\.goviActivePane, surface?.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -151,11 +162,13 @@ struct GoviWorkbench<Content: View>: View {
                 .allowsHitTesting(!settingsOpen && !tasksOpen)
                 .overlay {
                     if tasksOpen {
-                        GoviTasksView(directory: directory, linked: surface?.goviLaunch.issue, launch: { request in
-                            let opened = launchTerminal(request)
-                            if opened { tasksOpen = false }
-                            return opened
-                        }, close: closeTasksTab)
+                        GoviTasksView(
+                            directory: directory, linked: surface?.goviLaunch.issue,
+                            launch: { request in
+                                let opened = launchTerminal(request)
+                                if opened { tasksOpen = false }
+                                return opened
+                            }, close: closeTasksTab)
                     }
                 }
                 .overlay {
@@ -167,195 +180,259 @@ struct GoviWorkbench<Content: View>: View {
                 // Full-size git pane: fills the terminal area and stays until closed.
                 .overlay {
                     if gitOpen && gitExpanded {
-                        GoviGitPanel(changes: changes, directory: directory, expanded: true, toggleExpanded: toggleGitExpanded) { gitOpen = false }
-                            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        GoviGitPanel(changes: changes, directory: directory, expanded: true, toggleExpanded: toggleGitExpanded) {
+                            gitOpen = false
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     }
                 }
             if !focusMode {
-                HStack { Spacer(minLength: 0); GoviRepositoryDock(directory: directory, openFolder: openFolder, changes: changes, visible: visibility.visible) {
+                HStack {
+                    Spacer(minLength: 0)
+                    GoviRepositoryDock(directory: directory, openFolder: openFolder, changes: changes, visible: visibility.visible) {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) { gitOpen.toggle() }
-                    } }
-                    .frame(height: 42)
+                    }
+                }
+                .frame(height: 42)
             }
         }.padding(.bottom, 10)
     }
 
     private var decoratedWorkspace: some View {
         workspaceLayout
-        .font(GoviInk.font()).foregroundStyle(ui.ink).background(ui.canvas)
-        .overlay(alignment: .top) { if searching { searchPanel } }
-        .overlay(alignment: .bottomTrailing) {
-            if gitOpen && !gitExpanded {
-                ZStack(alignment: .bottomTrailing) {
-                    Color.black.opacity(0.001).onTapGesture { gitOpen = false }
-                    GoviGitPanel(changes: changes, directory: directory, expanded: false, toggleExpanded: toggleGitExpanded) { gitOpen = false }
-                        .padding(.bottom, 62).padding(.trailing, 12)
-                }
-                .transition(.opacity.combined(with: .offset(y: 8)))
-            }
-        }
-        .onChange(of: gitOpen) { open in if !open { focusTerminal() } }
-        .overlay(alignment: .topTrailing) {
-            if launcherOpen || attentionOpen {
-                ZStack(alignment: .topTrailing) {
-                    Color.black.opacity(0.001).onTapGesture { closeMenus() }
-                    Group {
-                        if launcherOpen {
-                            GoviAgentMenu(directory: directory, launch: { _ = launchTerminal($0) }, addProject: addSpace, connect: { connectRemote($0) }) { launcherOpen = false }
-                        } else {
-                            GoviAttentionMenu { attentionOpen = false }
+            .font(GoviInk.font()).foregroundStyle(ui.ink).background(ui.canvas)
+            .overlay(alignment: .top) { if searching { searchPanel } }
+            .overlay(alignment: .bottomTrailing) {
+                if gitOpen && !gitExpanded {
+                    ZStack(alignment: .bottomTrailing) {
+                        Color.black.opacity(0.001).onTapGesture { gitOpen = false }
+                        GoviGitPanel(changes: changes, directory: directory, expanded: false, toggleExpanded: toggleGitExpanded) {
+                            gitOpen = false
                         }
-                    }.padding(.top, 46).padding(.trailing, 12)
+                        .padding(.bottom, 62).padding(.trailing, 12)
+                    }
+                    .transition(.opacity.combined(with: .offset(y: 8)))
                 }
-                .transition(.opacity.combined(with: .offset(y: -6)))
             }
-        }
-        .overlay { if splash { GoviLaunchSplash { splash = false } } }
+            .onChange(of: gitOpen) { open in if !open { focusTerminal() } }
+            .overlay(alignment: .topTrailing) {
+                if launcherOpen || attentionOpen {
+                    ZStack(alignment: .topTrailing) {
+                        Color.black.opacity(0.001).onTapGesture { closeMenus() }
+                        Group {
+                            if launcherOpen {
+                                GoviAgentMenu(
+                                    directory: directory, launch: { _ = launchTerminal($0) }, addProject: addSpace,
+                                    connect: { connectRemote($0) }
+                                ) { launcherOpen = false }
+                            } else {
+                                GoviAttentionMenu { attentionOpen = false }
+                            }
+                        }.padding(.top, 46).padding(.trailing, 12)
+                    }
+                    .transition(.opacity.combined(with: .offset(y: -6)))
+                }
+            }
+            .overlay { if splash { GoviLaunchSplash { splash = false } } }
     }
 
     private var lifecycleWorkspace: some View {
         decoratedWorkspace
-        .onAppear {
-            refreshWindows()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { refreshWindows() }
-            if surface?.window?.isKeyWindow == true { navigation.record(surface?.id, panel: openPanel) }
-        }
-        .onChange(of: tasksOpen) { open in
-            // Shown from the sidebar row: stop the hidden terminal taking keys and record the visit.
-            guard open else { return }
-            closeMenus(); gitOpen = false; settingsOpen = false
-            surface?.window?.makeFirstResponder(nil)
-            navigation.record(surface?.id, panel: .tasks)
-        }
-        .onChange(of: surface?.id) { id in
-            if settingsOpen { settingsOpen = false }
-            if tasksOpen { tasksOpen = false }
-            if surface?.window?.isKeyWindow == true { navigation.record(id) }
-        }
-        .onChange(of: searching) { open in
-            guard !open else { return }
-            // A chosen result focuses its own session; otherwise return to this one.
-            DispatchQueue.main.async {
-                if !(surface?.window?.firstResponder is Ghostty.SurfaceView) { focusTerminal() }
+            .onAppear {
+                refreshWindows()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { refreshWindows() }
+                if surface?.window?.isKeyWindow == true { navigation.record(surface?.id, panel: openPanel) }
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
-            if let window = note.object as? NSWindow, window === surface?.window { navigation.record(surface?.id, panel: openPanel) }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviShowPlace)) { note in
-            guard let place = note.object as? GoviPlace, place.session == surface?.id else { return }
-            show(place.panel)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviSearchSessions)) { _ in
-            if surface?.window == NSApp.keyWindow { searching.toggle() }
-        }
-        .onChange(of: launcherOpen || attentionOpen) { _ in updateMenuKeyMonitor() }
-        .onDisappear {
-            if let menuKeyMonitor { NSEvent.removeMonitor(menuKeyMonitor); self.menuKeyMonitor = nil }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
-            if let window = note.object as? NSWindow, window === surface?.window { closeMenus() }
-        }
-        .onReceive(sidebarRefresh) { _ in
-            guard visibility.visible else { return }
-            refreshWindows(); detached.refresh(); remote.refresh()
-        }
-        .background(GoviWindowVisibilityReader(visibility: visibility))
-        .onChange(of: visibility.visible) { visible in
-            changes.isVisible = visible
-            if visible { refreshWindows(); detached.refresh(); remote.refresh() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeMainNotification)) { _ in refreshWindows() }
-        .onReceive(NotificationCenter.default.publisher(for: .goviLayoutChanged)) { _ in refreshWindows() }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in DispatchQueue.main.async { refreshWindows() } }
+            .onChange(of: tasksOpen) { open in
+                // Shown from the sidebar row: stop the hidden terminal taking keys and record the visit.
+                guard open else { return }
+                closeMenus()
+                gitOpen = false
+                settingsOpen = false
+                surface?.window?.makeFirstResponder(nil)
+                navigation.record(surface?.id, panel: .tasks)
+            }
+            .onChange(of: surface?.id) { id in
+                if settingsOpen { settingsOpen = false }
+                if tasksOpen { tasksOpen = false }
+                if surface?.window?.isKeyWindow == true { navigation.record(id) }
+            }
+            .onChange(of: searching) { open in
+                guard !open else { return }
+                // A chosen result focuses its own session; otherwise return to this one.
+                DispatchQueue.main.async {
+                    if !(surface?.window?.firstResponder is Ghostty.SurfaceView) { focusTerminal() }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+                if let window = note.object as? NSWindow, window === surface?.window { navigation.record(surface?.id, panel: openPanel) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviShowPlace)) { note in
+                guard let place = note.object as? GoviPlace, place.session == surface?.id else { return }
+                show(place.panel)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviSearchSessions)) { _ in
+                if surface?.window == NSApp.keyWindow { searching.toggle() }
+            }
+            .onChange(of: launcherOpen || attentionOpen) { _ in updateMenuKeyMonitor() }
+            .onDisappear {
+                if let menuKeyMonitor {
+                    NSEvent.removeMonitor(menuKeyMonitor)
+                    self.menuKeyMonitor = nil
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
+                if let window = note.object as? NSWindow, window === surface?.window { closeMenus() }
+            }
+            .onReceive(sidebarRefresh) { _ in
+                guard visibility.visible else { return }
+                refreshWindows()
+                detached.refresh()
+                remote.refresh()
+            }
+            .background(GoviWindowVisibilityReader(visibility: visibility))
+            .onChange(of: visibility.visible) { visible in
+                changes.isVisible = visible
+                if visible {
+                    refreshWindows()
+                    detached.refresh()
+                    remote.refresh()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeMainNotification)) { _ in refreshWindows() }
+            .onReceive(NotificationCenter.default.publisher(for: .goviLayoutChanged)) { _ in refreshWindows() }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in
+                DispatchQueue.main.async { refreshWindows() }
+            }
     }
 
     private var observedWorkspace: some View {
         lifecycleWorkspace
-        .onReceive(NotificationCenter.default.publisher(for: .goviShowSettings)) { _ in
-            if surface?.window == NSApp.keyWindow { toggleSettings() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviTasks)) { _ in
-            if surface?.window == NSApp.keyWindow { openTasks() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviRemoteHosts)) { note in
-            if surface?.window == NSApp.keyWindow { showRemoteHosts(note.object as? String) }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviTemplates)) { _ in
-            if surface?.window == NSApp.keyWindow { saveTemplateOnOpen = false; templatesOpen = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviSaveTemplate)) { _ in
-            if surface?.window == NSApp.keyWindow { saveTemplateOnOpen = true; templatesOpen = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviAttention)) { _ in
-            if surface?.window == NSApp.keyWindow { toggleAttention() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviFindOutput)) { _ in
-            if surface?.window == NSApp.keyWindow { findOutput() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviToggleFocus)) { _ in
-            if surface?.window == NSApp.keyWindow { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { focusMode.toggle() } }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .goviToggleSidebar)) { _ in
-            if surface?.window == NSApp.keyWindow { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { sidebar.toggle(); focusMode = false } }
-        }
+            .onReceive(NotificationCenter.default.publisher(for: .goviShowSettings)) { _ in
+                if surface?.window == NSApp.keyWindow { toggleSettings() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviTasks)) { _ in
+                if surface?.window == NSApp.keyWindow { openTasks() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviRemoteHosts)) { note in
+                if surface?.window == NSApp.keyWindow { showRemoteHosts(note.object as? String) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviTemplates)) { _ in
+                if surface?.window == NSApp.keyWindow {
+                    saveTemplateOnOpen = false
+                    templatesOpen = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviSaveTemplate)) { _ in
+                if surface?.window == NSApp.keyWindow {
+                    saveTemplateOnOpen = true
+                    templatesOpen = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviAttention)) { _ in
+                if surface?.window == NSApp.keyWindow { toggleAttention() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviFindOutput)) { _ in
+                if surface?.window == NSApp.keyWindow { findOutput() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviToggleFocus)) { _ in
+                if surface?.window == NSApp.keyWindow {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { focusMode.toggle() }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .goviToggleSidebar)) { _ in
+                if surface?.window == NSApp.keyWindow {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
+                        sidebar.toggle()
+                        focusMode = false
+                    }
+                }
+            }
     }
 
     var body: some View {
         observedWorkspace
-        .sheet(isPresented: $addingCommand, onDismiss: focusTerminal) { commandEditor }
-        .sheet(isPresented: $templatesOpen, onDismiss: focusTerminal) {
-            if let owner = surface.flatMap({ GoviPaneCoordinator.owner(of: $0.id) }) {
-                GoviTemplatesView(controller: owner, saveCurrentOnAppear: saveTemplateOnOpen)
+            .sheet(isPresented: $addingCommand, onDismiss: focusTerminal) { commandEditor }
+            .sheet(isPresented: $templatesOpen, onDismiss: focusTerminal) {
+                if let owner = surface.flatMap({ GoviPaneCoordinator.owner(of: $0.id) }) {
+                    GoviTemplatesView(controller: owner, saveCurrentOnAppear: saveTemplateOnOpen)
+                }
             }
-        }
-        .sheet(item: $outputSearch, onDismiss: focusTerminal) { GoviOutputSearch(text: $0.text) }
-        .sheet(isPresented: $remoteHostsOpen, onDismiss: focusTerminal) {
-            GoviRemoteHostsView(ghostty: ghostty, window: surface?.window, surface: surface, initialSelection: remoteSelection)
-        }
+            .sheet(item: $outputSearch, onDismiss: focusTerminal) { GoviOutputSearch(text: $0.text) }
+            .sheet(isPresented: $remoteHostsOpen, onDismiss: focusTerminal) {
+                GoviRemoteHostsView(ghostty: ghostty, window: surface?.window, surface: surface, initialSelection: remoteSelection)
+            }
     }
 
     private func showRemoteHosts(_ selection: String? = nil) {
-        closeMenus(); remoteSelection = selection; remoteHostsOpen = true
+        closeMenus()
+        remoteSelection = selection
+        remoteHostsOpen = true
     }
     private func connectRemote(_ target: GoviRemoteTarget, split: Bool = false) {
         if let failure = GoviRemoteLauncher.open(target, ghostty: ghostty, from: surface?.window, beside: split ? surface : nil) {
-            let alert = NSAlert(); alert.messageText = "Couldn't connect to \(target.name)"; alert.informativeText = failure; alert.runModal()
+            let alert = NSAlert()
+            alert.messageText = "Couldn't connect to \(target.name)"
+            alert.informativeText = failure
+            alert.runModal()
         }
         refreshWindows()
     }
 
-    private func closeMenus() { launcherOpen = false; attentionOpen = false }
+    private func closeMenus() {
+        launcherOpen = false
+        attentionOpen = false
+    }
     private func toggleAttention() {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
-            launcherOpen = false; attentionOpen.toggle()
+            launcherOpen = false
+            attentionOpen.toggle()
         }
     }
     private var openPanel: GoviPanel? { settingsOpen ? .settings : tasksOpen ? .tasks : nil }
     /// Shows a panel (or the bare terminal) without recording history; back/forward uses this.
     private func show(_ panel: GoviPanel?) {
-        closeMenus(); gitOpen = false
+        closeMenus()
+        gitOpen = false
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
-            settingsOpen = panel == .settings; tasksOpen = panel == .tasks
+            settingsOpen = panel == .settings
+            tasksOpen = panel == .tasks
         }
         // Let the hidden terminal stop taking keystrokes (Esc, typing) while a panel shows.
         if panel == nil { focusTerminal() } else { surface?.window?.makeFirstResponder(nil) }
     }
-    private func openSettings() { show(.settings); navigation.record(surface?.id, panel: .settings) }
-    private func closeSettings() { show(nil); navigation.record(surface?.id) }
+    private func openSettings() {
+        show(.settings)
+        navigation.record(surface?.id, panel: .settings)
+    }
+    private func closeSettings() {
+        show(nil)
+        navigation.record(surface?.id)
+    }
     private func toggleSettings() { if settingsOpen { closeSettings() } else { openSettings() } }
-    private func openTasks() { show(.tasks); navigation.record(surface?.id, panel: .tasks) }
-    private func closeTasks() { show(nil); navigation.record(surface?.id) }
+    private func openTasks() {
+        show(.tasks)
+        navigation.record(surface?.id, panel: .tasks)
+    }
+    private func closeTasks() {
+        show(nil)
+        navigation.record(surface?.id)
+    }
     private func closeTasksTab() {
         if let windowNumber { tasksTabs.close(windowNumber) }
-        show(nil); navigation.record(surface?.id)
+        show(nil)
+        navigation.record(surface?.id)
     }
     private func updateMenuKeyMonitor() {
-        if let menuKeyMonitor { NSEvent.removeMonitor(menuKeyMonitor); self.menuKeyMonitor = nil }
+        if let menuKeyMonitor {
+            NSEvent.removeMonitor(menuKeyMonitor)
+            self.menuKeyMonitor = nil
+        }
         guard launcherOpen || attentionOpen else { return }
         menuKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard event.keyCode == 53, event.window === surface?.window else { return event }
-            closeMenus(); return nil
+            closeMenus()
+            return nil
         }
     }
 
@@ -375,7 +452,12 @@ struct GoviWorkbench<Content: View>: View {
             HStack(spacing: 0) {
                 GoviSidebarToggle(isOpen: sidebar && !focusMode) {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
-                        if focusMode { focusMode = false; sidebar = true } else { sidebar.toggle() }
+                        if focusMode {
+                            focusMode = false
+                            sidebar = true
+                        } else {
+                            sidebar.toggle()
+                        }
                     }
                     focusTerminal()
                 }.frame(width: GoviChromeMetrics.button, height: GoviChromeMetrics.button)
@@ -417,38 +499,47 @@ struct GoviWorkbench<Content: View>: View {
                 if state != .idle { detail.append(state.label) }
                 if leaf.id == surface?.id { detail.append("Current") }
                 let id = leaf.id
-                options.append(.init(title: GoviPaneNaming.title(leaf), description: detail.joined(separator: " · "), symbols: nil) {
-                    GoviNavigation.focus(id)
-                })
+                options.append(
+                    .init(title: GoviPaneNaming.title(leaf), description: detail.joined(separator: " · "), symbols: nil) {
+                        GoviNavigation.focus(id)
+                    })
             }
         }
         for session in detached.sessions {
             let agent = GoviAgent.allCases.first { $0.commands.contains(session.agent) || $0.rawValue == session.agent }
             let name = agent?.name ?? (session.agent.isEmpty ? "Terminal" : session.agent)
-            options.append(.init(title: name, description: "Running in background · \(GoviPaneNaming.shortPath(session.cwd))", symbols: nil) {
-                detached.open(session)
-            })
+            options.append(
+                .init(title: name, description: "Running in background · \(GoviPaneNaming.shortPath(session.cwd))", symbols: nil) {
+                    detached.open(session)
+                })
         }
         for space in notebook.spaces {
-            options.append(.init(title: "Open \(space.name)", description: "Saved project · \(GoviPaneNaming.shortPath(space.path))", symbols: nil) {
-                openFolder(space.path)
-            })
+            options.append(
+                .init(title: "Open \(space.name)", description: "Saved project · \(GoviPaneNaming.shortPath(space.path))", symbols: nil) {
+                    openFolder(space.path)
+                })
         }
         for item in notebook.commands {
             options.append(.init(title: item.name, description: "Saved command · \(item.command)", symbols: nil) { stage(item.command) })
         }
         for entry in remote.entries where entry.kind != .tailnet || entry.online == true {
             let kind = entry.kind == .tailnet ? "Tailnet" : entry.kind == .sshConfig ? "ssh config" : "Remote host"
-            options.append(.init(title: "Connect to \(entry.target.name)", description: "\(kind) · \(entry.detail)", symbols: nil) {
-                connectRemote(entry.target)
-            })
+            options.append(
+                .init(title: "Connect to \(entry.target.name)", description: "\(kind) · \(entry.detail)", symbols: nil) {
+                    connectRemote(entry.target)
+                })
         }
-        options.append(.init(title: "Remote hosts…", description: "SSH and Tailscale connections", symbols: shortcuts.chord(.remoteHosts).symbols) {
-            showRemoteHosts()
-        })
-        options.append(.init(title: "New workspace", description: "Start a terminal in \(GoviPaneNaming.shortPath(directory))", symbols: shortcuts.chord(.newWorkspace).symbols) {
-            launchTerminal(.init())
-        })
+        options.append(
+            .init(title: "Remote hosts…", description: "SSH and Tailscale connections", symbols: shortcuts.chord(.remoteHosts).symbols) {
+                showRemoteHosts()
+            })
+        options.append(
+            .init(
+                title: "New workspace", description: "Start a terminal in \(GoviPaneNaming.shortPath(directory))",
+                symbols: shortcuts.chord(.newWorkspace).symbols
+            ) {
+                launchTerminal(.init())
+            })
         return options
     }
 
@@ -458,11 +549,14 @@ struct GoviWorkbench<Content: View>: View {
                 Text("Workspaces").font(GoviInk.font(14).weight(.semibold)).foregroundStyle(ui.ink)
                 Spacer(minLength: 0)
                 GoviIconButton(symbol: "line.3.horizontal.decrease", help: "Filter terminals", on: filterVisible) {
-                    filterVisible.toggle(); if !filterVisible { filter = "" }
+                    filterVisible.toggle()
+                    if !filterVisible { filter = "" }
                 }
                 GoviIconButton(symbol: "folder.badge.plus", help: "Add project folder", action: addSpace)
             }.padding(.leading, 16).padding(.trailing, 8).frame(height: 46)
-            Button { launchTerminal(.init()) } label: {
+            Button {
+                launchTerminal(.init())
+            } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: GoviSidebarMetrics.icon)
                     Text("New workspace")
@@ -571,7 +665,10 @@ struct GoviWorkbench<Content: View>: View {
         (window.windowController as? TerminalController)?.surfaceTree.root?.leaves() ?? []
     }
     private func visibleLeaves(_ window: NSWindow) -> [Ghostty.SurfaceView] {
-        leaves(window).filter { filter.isEmpty || GoviPaneNaming.title($0).localizedCaseInsensitiveContains(filter) || ($0.pwd ?? "").localizedCaseInsensitiveContains(filter) }
+        leaves(window).filter {
+            filter.isEmpty || GoviPaneNaming.title($0).localizedCaseInsensitiveContains(filter)
+                || ($0.pwd ?? "").localizedCaseInsensitiveContains(filter)
+        }
     }
     private func directoryName(_ path: String) -> String {
         if path.hasPrefix(Self.remotePrefix) { return String(path.dropFirst(Self.remotePrefix.count)) }
@@ -605,12 +702,19 @@ struct GoviWorkbench<Content: View>: View {
                 GoviHoverRow { hovering in
                     HStack(spacing: 4) {
                         chevron(open, label: "Toggle \(directoryName(group.id))") {
-                            if collapsedDirectories.contains(group.id) { collapsedDirectories.remove(group.id) } else { collapsedDirectories.insert(group.id) }
+                            if collapsedDirectories.contains(group.id) {
+                                collapsedDirectories.remove(group.id)
+                            } else {
+                                collapsedDirectories.insert(group.id)
+                            }
                         }
                         HStack(spacing: 6) {
-                            Image(systemName: target == nil ? "folder.fill" : "network").font(.system(size: 11)).frame(width: GoviSidebarMetrics.icon)
-                                .foregroundStyle(ui.tone(for: group.id))
-                            Text(directoryName(group.id)).font(GoviInk.font(13)).foregroundStyle(ui.ink).lineLimit(1).truncationMode(.middle)
+                            Image(systemName: target == nil ? "folder.fill" : "network").font(.system(size: 11)).frame(
+                                width: GoviSidebarMetrics.icon
+                            )
+                            .foregroundStyle(ui.tone(for: group.id))
+                            Text(directoryName(group.id)).font(GoviInk.font(13)).foregroundStyle(ui.ink).lineLimit(1).truncationMode(
+                                .middle)
                         }
                         if !open && waiting > 0 { waitingBadge(waiting) }
                         Spacer(minLength: 0)
@@ -631,20 +735,27 @@ struct GoviWorkbench<Content: View>: View {
                 if open {
                     ForEach(shown, id: \.windowNumber) { window in
                         ForEach(visibleLeaves(window)) { item in
-                            GoviSidebarTerminal(surface: item, active: item.id == surface?.id && !tasksTabs.showing.contains(window.windowNumber)) {
+                            GoviSidebarTerminal(
+                                surface: item, active: item.id == surface?.id && !tasksTabs.showing.contains(window.windowNumber)
+                            ) {
                                 tasksTabs.setShowing(window.windowNumber, false)
                                 selectWorkspace(window)
                                 (window.windowController as? TerminalController)?.focusedSurface = item
                                 window.makeFirstResponder(item)
                             }.padding(.leading, GoviSidebarMetrics.indent)
                         }
-                        if tasksTabs.tabs.contains(window.windowNumber) && (filter.isEmpty || "tasks".localizedCaseInsensitiveContains(filter)) {
+                        if tasksTabs.tabs.contains(window.windowNumber)
+                            && (filter.isEmpty || "tasks".localizedCaseInsensitiveContains(filter))
+                        {
                             GoviSidebarTasksTab(active: tasksTabs.showing.contains(window.windowNumber)) {
                                 selectWorkspace(window)
                                 tasksTabs.setShowing(window.windowNumber, true)
                             } close: {
                                 tasksTabs.close(window.windowNumber)
-                                if window === surface?.window { show(nil); navigation.record(surface?.id) }
+                                if window === surface?.window {
+                                    show(nil)
+                                    navigation.record(surface?.id)
+                                }
                             }.padding(.leading, GoviSidebarMetrics.indent)
                         }
                     }
@@ -666,22 +777,28 @@ struct GoviWorkbench<Content: View>: View {
             ForEach(detached.sessions) { session in
                 let agent = GoviAgent.allCases.first { $0.commands.contains(session.agent) || $0.rawValue == session.agent }
                 GoviHoverRow { hovering in
-                    Button { detached.open(session) } label: {
+                    Button {
+                        detached.open(session)
+                    } label: {
                         HStack(spacing: 8) {
                             Group {
-                                if let agent { GoviAgentGlyph(agent: agent).foregroundStyle(ui.tone(for: agent.rawValue)) }
-                                else { Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(ui.accent) }
+                                if let agent {
+                                    GoviAgentGlyph(agent: agent).foregroundStyle(ui.tone(for: agent.rawValue))
+                                } else {
+                                    Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(ui.accent)
+                                }
                             }.frame(width: GoviSidebarMetrics.icon)
-                            Text(agent?.name ?? (session.agent.isEmpty ? "Terminal" : session.agent)).foregroundStyle(ui.ink.opacity(0.85)).lineLimit(1)
+                            Text(agent?.name ?? (session.agent.isEmpty ? "Terminal" : session.agent)).foregroundStyle(ui.ink.opacity(0.85))
+                                .lineLimit(1)
                             Text(GoviPaneNaming.shortPath(session.cwd)).font(GoviInk.font(10.5)).lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 0)
                         }.font(GoviInk.font(12.5).weight(.light)).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain).foregroundStyle(ui.muted).modifier(GoviSidebarRowStyle())
-                    .help("Still running. Click to open it in a new workspace.")
-                    .contextMenu {
-                        Button("Open") { detached.open(session) }
-                        Button("End session") { detached.end(session) }
-                    }
+                        .help("Still running. Click to open it in a new workspace.")
+                        .contextMenu {
+                            Button("Open") { detached.open(session) }
+                            Button("End session") { detached.end(session) }
+                        }
                 }
             }
         }
@@ -691,7 +808,9 @@ struct GoviWorkbench<Content: View>: View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach(notebook.spaces) { space in
                 GoviHoverRow { hovering in
-                    Button { openFolder(space.path) } label: {
+                    Button {
+                        openFolder(space.path)
+                    } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "folder.fill").font(.system(size: 11)).frame(width: GoviSidebarMetrics.icon)
                                 .foregroundStyle(ui.tone(for: space.path))
@@ -699,10 +818,10 @@ struct GoviWorkbench<Content: View>: View {
                             Spacer(minLength: 0)
                         }.font(GoviInk.font(12.5).weight(.light)).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain).foregroundStyle(ui.muted).modifier(GoviSidebarRowStyle()).help(space.path)
-                    .contextMenu {
-                        Button("Open in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: space.path) }
-                        Button("Remove shortcut") { notebook.spaces.removeAll { $0.id == space.id } }
-                    }
+                        .contextMenu {
+                            Button("Open in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: space.path) }
+                            Button("Remove shortcut") { notebook.spaces.removeAll { $0.id == space.id } }
+                        }
                 }
             }
         }
@@ -718,40 +837,53 @@ struct GoviWorkbench<Content: View>: View {
                     ForEach(notebook.commands) { item in Button(item.name) { notebook.commands.removeAll { $0.id == item.id } } }
                 }
             }
-        } label: { GoviSymbol(symbol: "bookmark").frame(width: GoviChromeMetrics.button, height: GoviChromeMetrics.button).modifier(GoviHoverHighlight()) }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Saved commands").accessibilityLabel("Saved commands")
+        } label: {
+            GoviSymbol(symbol: "bookmark").frame(width: GoviChromeMetrics.button, height: GoviChromeMetrics.button).modifier(
+                GoviHoverHighlight())
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Saved commands").accessibilityLabel("Saved commands")
     }
 
     private var sidebarDivider: some View {
         Rectangle().fill(Color.clear).frame(width: 1)
             .overlay {
                 Color.clear.frame(width: 7).contentShape(Rectangle()).backport.pointerStyle(.resizeLeftRight)
-                    .gesture(DragGesture().onChanged { value in
-                        if sidebarDragStart == nil { sidebarDragStart = sidebarWidth }
-                        sidebarWidth = min(360, max(185, (sidebarDragStart ?? sidebarWidth) + value.translation.width))
-                    }.onEnded { _ in sidebarDragStart = nil })
+                    .gesture(
+                        DragGesture().onChanged { value in
+                            if sidebarDragStart == nil { sidebarDragStart = sidebarWidth }
+                            sidebarWidth = min(360, max(185, (sidebarDragStart ?? sidebarWidth) + value.translation.width))
+                        }.onEnded { _ in sidebarDragStart = nil })
             }
     }
 
     private var commandEditor: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Save command").font(GoviInk.font(17).weight(.medium))
-            TextField("Name", text: $commandName); TextField("Command", text: $commandText)
-            Text("Selecting a saved command fills the terminal input. Press Return to run it.").font(GoviInk.font(11)).foregroundStyle(ui.muted)
+            TextField("Name", text: $commandName)
+            TextField("Command", text: $commandText)
+            Text("Selecting a saved command fills the terminal input. Press Return to run it.").font(GoviInk.font(11)).foregroundStyle(
+                ui.muted)
             HStack {
-                Button("Cancel") { addingCommand = false }.keyboardShortcut(.cancelAction); Spacer()
+                Button("Cancel") { addingCommand = false }.keyboardShortcut(.cancelAction)
+                Spacer()
                 Button("Save") {
                     notebook.commands.append(.init(name: commandName.trimmingCharacters(in: .whitespacesAndNewlines), command: commandText))
-                    commandName = ""; commandText = ""; addingCommand = false
+                    commandName = ""
+                    commandText = ""
+                    addingCommand = false
                 }.keyboardShortcut(.defaultAction)
-                    .disabled(commandName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || commandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || commandText.contains("\n") || commandText.contains("\r"))
+                    .disabled(
+                        commandName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || commandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || commandText.contains("\n")
+                            || commandText.contains("\r"))
             }
         }.padding(26).frame(width: 440).background(ui.paper).foregroundStyle(ui.ink).font(GoviInk.font(12))
     }
     private func workspaceName(_ window: NSWindow?) -> String {
         if let name = (window?.windowController as? TerminalController)?.goviName, !name.isEmpty { return name }
         if let controller = window?.windowController as? TerminalController,
-           let path = controller.focusedSurface?.pwd ?? controller.surfaceTree.root?.leaves().first?.pwd {
+            let path = controller.focusedSurface?.pwd ?? controller.surfaceTree.root?.leaves().first?.pwd
+        {
             return path == FileManager.default.homeDirectoryForCurrentUser.path ? "Home" : URL(fileURLWithPath: path).lastPathComponent
         }
         guard let window, let index = windows.firstIndex(of: window), windows.count > 1 else { return "Terminal" }
@@ -762,7 +894,8 @@ struct GoviWorkbench<Content: View>: View {
         window.makeKeyAndOrderFront(nil)
     }
     private func perform(_ action: String) {
-        _ = surface?.surfaceModel?.perform(action: action); focusTerminal()
+        _ = surface?.surfaceModel?.perform(action: action)
+        focusTerminal()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { refreshWindows() }
     }
     private func focusTerminal() {
@@ -771,7 +904,10 @@ struct GoviWorkbench<Content: View>: View {
             if let surface { surface.window?.makeFirstResponder(surface) }
         }
     }
-    private func stage(_ command: String) { surface?.surfaceModel?.sendText(command); focusTerminal() }
+    private func stage(_ command: String) {
+        surface?.surfaceModel?.sendText(command)
+        focusTerminal()
+    }
     private func findOutput() {
         guard let terminal = surface?.surface else { return }
         var text = ghostty_text_s()
@@ -789,21 +925,34 @@ struct GoviWorkbench<Content: View>: View {
         tasksTabs.prune(keeping: Set(TerminalController.all.compactMap { $0.window?.windowNumber }))
         var roots = workspaceRoots.filter { numbers.contains($0.key) }
         for window in windows where roots[window.windowNumber] == nil {
-            if let pane = leaves(window).first, pane.goviLaunch.remote != nil || pane.pwd != nil { roots[window.windowNumber] = rootKey(pane) }
+            if let pane = leaves(window).first, pane.goviLaunch.remote != nil || pane.pwd != nil {
+                roots[window.windowNumber] = rootKey(pane)
+            }
         }
         if roots != workspaceRoots { workspaceRoots = roots }
     }
     private func addSpace() {
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
-        panel.message = "Choose a project folder."; panel.prompt = "Add project"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a project folder."
+        panel.prompt = "Add project"
         let completion: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .OK, let url = panel.url else { focusTerminal(); return }
-            if !notebook.spaces.contains(where: { $0.path == url.path }) { notebook.spaces.append(.init(name: url.lastPathComponent, path: url.path)) }
+            guard response == .OK, let url = panel.url else {
+                focusTerminal()
+                return
+            }
+            if !notebook.spaces.contains(where: { $0.path == url.path }) {
+                notebook.spaces.append(.init(name: url.lastPathComponent, path: url.path))
+            }
             openFolder(url.path)
         }
-        if let window = surface?.window { panel.beginSheetModal(for: window, completionHandler: completion) }
-        else { panel.begin(completionHandler: completion) }
+        if let window = surface?.window {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
+        }
     }
     @discardableResult private func launchTerminal(_ request: GoviLaunch) -> Bool {
         var config = Ghostty.SurfaceConfiguration()
@@ -813,13 +962,15 @@ struct GoviWorkbench<Content: View>: View {
         config.goviLaunch.issue = request.issue
         if let executable = request.executable {
             let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-            let invocation = ([executable] + (request.agent?.launchArguments ?? []) + request.arguments).map(GoviShell.quote).joined(separator: " ")
+            let invocation = ([executable] + (request.agent?.launchArguments ?? []) + request.arguments).map(GoviShell.quote).joined(
+                separator: " ")
             let script = invocation + "; " + GoviShell.agentExitStatus + "exec " + GoviAgent.quote(shell) + " -l"
             config.command = GoviAgent.quote(shell) + " -lic " + GoviAgent.quote(script)
         }
         let controller = TerminalController.newTab(ghostty, from: surface?.window, withBaseConfig: config)
         if request.agent != nil || request.label != nil,
-           let created = controller?.surfaceTree.root?.leaves().first {
+            let created = controller?.surfaceTree.root?.leaves().first
+        {
             GoviActivityCenter.shared.tag(created, agent: request.agent, label: request.label)
         }
         refreshWindows()
@@ -828,148 +979,22 @@ struct GoviWorkbench<Content: View>: View {
     private func openFolder(_ path: String) {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            let alert = NSAlert(); alert.messageText = "Folder not found"; alert.informativeText = path; alert.runModal(); return
+            let alert = NSAlert()
+            alert.messageText = "Folder not found"
+            alert.informativeText = path
+            alert.runModal()
+            return
         }
-        if let existing = windows.first(where: { ($0.windowController as? TerminalController)?.surfaceTree.contains(where: { $0.pwd == path }) == true }) {
-            selectWorkspace(existing); return
+        if let existing = windows.first(where: {
+            ($0.windowController as? TerminalController)?.surfaceTree.contains(where: { $0.pwd == path }) == true
+        }) {
+            selectWorkspace(existing)
+            return
         }
-        var config = Ghostty.SurfaceConfiguration(); config.workingDirectory = path
-        _ = TerminalController.newTab(ghostty, from: surface?.window, withBaseConfig: config); refreshWindows()
-    }
-}
-
-struct GoviSidebarTerminal: View {
-    @Environment(\.goviPalette) private var ui
-    @ObservedObject var surface: Ghostty.SurfaceView
-    @ObservedObject private var activity = GoviActivityCenter.shared
-    @State private var hovering = false
-    let active: Bool
-    private var info: GoviActivityCenter.Info { activity.info[surface.id] ?? .init() }
-    /// Second line: activity first, else the folder unless the title already shows it.
-    private var subtitle: String? {
-        if surface.processExited { return "Exited" }
-        if info.state != .idle { return info.state.label }
-        let path = GoviPaneNaming.shortPath(surface.pwd ?? FileManager.default.homeDirectoryForCurrentUser.path)
-        let title = GoviPaneNaming.title(surface)
-        return path == "~" && title.hasSuffix("~") ? nil : path
-    }
-    let action: () -> Void
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: action) {
-                HStack(spacing: 8) {
-                    sessionIcon.frame(width: GoviSidebarMetrics.icon, height: GoviSidebarMetrics.icon)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(GoviPaneNaming.title(surface)).lineLimit(1).truncationMode(.middle)
-                        if let label = info.label {
-                            Label(label, systemImage: surface.goviLaunch.remote == nil ? "arrow.triangle.branch" : "network").labelStyle(.titleAndIcon)
-                                .font(GoviInk.font(10.5)).foregroundStyle(ui.muted).lineLimit(1).truncationMode(.middle)
-                        } else if let subtitle {
-                            Text(subtitle).font(GoviInk.font(10.5)).foregroundStyle(ui.muted).lineLimit(1).truncationMode(.head)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    if GoviPersistence.isPersistent(surface.id) && hovering {
-                        Image(systemName: "infinity").font(.system(size: 9, weight: .semibold)).foregroundStyle(ui.muted)
-                            .help("Keeps running when you close the window or quit Govi")
-                            .accessibilityLabel("Persistent session")
-                    }
-                    if surface.processExited { Image(systemName: "stop.circle").font(.system(size: 10)).help("Process exited") }
-                    else if info.state != .idle { GoviActivityBadge(state: info.state) }
-                    else if surface.bell { Circle().fill(Color.orange).frame(width: 5, height: 5).help("Terminal bell") }
-                }.padding(.vertical, 5).padding(.trailing, 4).contentShape(Rectangle())
-            }.buttonStyle(.plain)
-                .help("\(surface.pwd ?? "")\(info.state == .idle ? "" : "\n" + info.state.label)\nDrag to move this terminal")
-                .onDrag { GoviPaneCoordinator.dragProvider(for: surface) }
-            Menu {
-                Button("Split right") { perform("new_split:right") }
-                Button("Split below") { perform("new_split:down") }
-                Button("Maximize / restore pane") { perform("toggle_split_zoom") }
-                Button("Rename terminal…") { surface.promptTitle() }
-                if let path = surface.pwd {
-                    Button("Show in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path) }
-                }
-            } label: { Image(systemName: "ellipsis").font(.system(size: 11)).frame(width: 22, height: 22) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Session actions").accessibilityLabel("Session actions")
-                .opacity(hovering ? 1 : 0)
-            Button { perform("close_surface") } label: {
-                Image(systemName: "xmark").font(.system(size: 9.5, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
-            }.buttonStyle(.plain).help("Close terminal").accessibilityLabel("Close terminal")
-                .opacity(hovering ? 1 : 0)
-        }.font(GoviInk.font(12.5).weight(.light))
-            .foregroundStyle(active ? ui.ink : ui.muted)
-            .padding(.horizontal, GoviSidebarMetrics.inset)
-            .frame(minHeight: GoviSidebarMetrics.row)
-            .background(active ? ui.ink.opacity(0.10) : ui.ink.opacity(hovering ? 0.05 : 0), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay(alignment: .leading) {
-                if active { Capsule().fill(ui.accent).frame(width: 2.5, height: 16).offset(x: -1) }
-            }
-            .contentShape(Rectangle()).onHover { hovering = $0 }
-            .contextMenu {
-                Button("Split right") { perform("new_split:right") }
-                Button("Split below") { perform("new_split:down") }
-                Button("Maximize / restore pane") { perform("toggle_split_zoom") }
-                Button("Rename terminal…") { surface.promptTitle() }
-                Divider()
-                Button("Close terminal") { perform("close_surface") }
-            }
-    }
-    @ViewBuilder private var sessionIcon: some View {
-        let title = GoviPaneNaming.title(surface).lowercased()
-        if let agent = info.agent ?? GoviAgent.allCases.first(where: { title == $0.rawValue || title.hasPrefix($0.rawValue + " ") || title == $0.name.lowercased() }) {
-            GoviAgentGlyph(agent: agent).foregroundStyle(ui.tone(for: agent.rawValue))
-        } else if let remote = surface.goviLaunch.remote {
-            Image(systemName: "network").font(.system(size: 11)).foregroundStyle(ui.tone(for: remote.host))
-        } else {
-            Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(ui.accent)
-        }
-    }
-    private func perform(_ command: String) {
-        action()
-        _ = surface.surfaceModel?.perform(action: command)
-    }
-}
-
-/// One grid for every sidebar row: 6pt inner padding, 28pt rows, 16pt per level,
-/// 16pt icon column. Each level's chevron or icon sits under the icon above it.
-enum GoviSidebarMetrics {
-    static let inset: CGFloat = 6
-    static let row: CGFloat = 28
-    static let indent: CGFloat = 16
-    static let icon: CGFloat = 16
-}
-
-/// Hands its content a hover flag, so a row can reveal its icons only under the pointer.
-struct GoviHoverRow<Content: View>: View {
-    @ViewBuilder let content: (Bool) -> Content
-    @State private var hovering = false
-    var body: some View { content(hovering).onHover { hovering = $0 } }
-}
-
-/// The sidebar's primary action: a soft filled row that brightens on hover.
-struct GoviProminentRowStyle: ViewModifier {
-    @Environment(\.goviPalette) private var ui
-    @State private var hovering = false
-    func body(content: Content) -> some View {
-        content
-            .background(ui.ink.opacity(hovering ? 0.11 : 0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ui.ink.opacity(0.06), lineWidth: 0.5))
-            .onHover { hovering = $0 }
-    }
-}
-
-struct GoviSidebarRowStyle: ViewModifier {
-    @Environment(\.goviPalette) private var ui
-    var indent: CGFloat = 0
-    @State private var hovering = false
-    func body(content: Content) -> some View {
-        content
-            .padding(.horizontal, GoviSidebarMetrics.inset)
-            .frame(minHeight: GoviSidebarMetrics.row)
-            .background(ui.ink.opacity(hovering ? 0.05 : 0), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .contentShape(Rectangle())
-            .onHover { hovering = $0 }
-            .padding(.leading, indent)
+        var config = Ghostty.SurfaceConfiguration()
+        config.workingDirectory = path
+        _ = TerminalController.newTab(ghostty, from: surface?.window, withBaseConfig: config)
+        refreshWindows()
     }
 }
 
@@ -983,7 +1008,10 @@ extension Notification.Name {
     static let goviFindOutput = Notification.Name("goviFindOutput")
     static let goviLayoutChanged = Notification.Name("goviLayoutChanged")
 }
-struct GoviOutputSnapshot: Identifiable { let id = UUID(); let text: String }
+struct GoviOutputSnapshot: Identifiable {
+    let id = UUID()
+    let text: String
+}
 struct GoviOutputSearch: View {
     @Environment(\.goviPalette) private var ui
 
@@ -998,12 +1026,14 @@ struct GoviOutputSearch: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 17) {
             HStack {
-                Text("Find in terminal output").font(GoviInk.font(17).weight(.medium)); Spacer()
+                Text("Find in terminal output").font(GoviInk.font(17).weight(.medium))
+                Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             TextField("Search output…", text: $query).focused($focused).textFieldStyle(.roundedBorder)
             HStack {
-                Text(query.isEmpty ? "Scrollback snapshot" : "\(matchingLines.count) matching lines"); Spacer()
+                Text(query.isEmpty ? "Scrollback snapshot" : "\(matchingLines.count) matching lines")
+                Spacer()
                 Button("Copy results") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(matchingLines.joined(separator: "\n"), forType: .string)
@@ -1017,327 +1047,5 @@ struct GoviOutputSearch: View {
             Text("Snapshot of the focused terminal. Running processes continue.").font(GoviInk.font(10)).foregroundStyle(ui.muted)
         }.font(GoviInk.font(12)).foregroundStyle(ui.ink).padding(25)
             .frame(width: 720, height: 520).background(ui.paper).onAppear { focused = true }
-    }
-}
-
-/// Repository operations run off the UI thread, with argument arrays (no shell evaluation).
-private final class GoviRepository: ObservableObject {
-    struct Worktree: Identifiable { var id: String { path }; let path: String; let branch: String }
-    @Published var branch = ""
-    @Published var branches: [String] = []
-    @Published var worktrees: [Worktree] = []
-    @Published var busy = false
-    @Published var error: String?
-    private var directory = ""
-    private var generation = UUID()
-
-    private static func git(_ directory: String, _ arguments: [String]) throws -> String {
-        try GoviGit.run(directory, arguments)
-    }
-
-    func refresh(_ path: String) {
-        if directory != path {
-            directory = path; generation = UUID()
-            branch = ""; branches = []; worktrees = []; error = nil
-        }
-        guard !busy else { return }
-        directory = path
-        let token = UUID(); generation = token
-        DispatchQueue.global(qos: .utility).async {
-            let isRepository = (try? Self.git(path, ["rev-parse", "--show-toplevel"])) != nil
-            let branch = isRepository ? ((try? Self.git(path, ["symbolic-ref", "--short", "HEAD"])) ??
-                ((try? Self.git(path, ["rev-parse", "--short", "HEAD"])) .map { "Detached · \($0)" } ?? "")) : ""
-            let branches = (try? Self.git(path, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])) ?? ""
-            let list = (try? Self.git(path, ["worktree", "list", "--porcelain", "-z"])) ?? ""
-            var trees: [Worktree] = []
-            var currentPath = "", currentBranch = "Detached HEAD"
-            for field in list.components(separatedBy: "\0") {
-                if field.hasPrefix("worktree ") { currentPath = String(field.dropFirst(9)); currentBranch = "Detached HEAD" }
-                else if field.hasPrefix("branch refs/heads/") { currentBranch = String(field.dropFirst(18)) }
-                else if field.isEmpty && !currentPath.isEmpty {
-                    trees.append(.init(path: currentPath, branch: currentBranch)); currentPath = ""
-                }
-            }
-            let result = trees
-            DispatchQueue.main.async {
-                guard self.generation == token else { return }
-                self.branch = branch; self.branches = branches.split(separator: "\n").map(String.init); self.worktrees = result
-            }
-        }
-    }
-
-    func run(_ arguments: [String], completion: @escaping () -> Void = {}) {
-        guard !busy else { return }
-        busy = true; error = nil; generation = UUID()
-        let path = directory
-        DispatchQueue.global(qos: .userInitiated).async {
-            let failure: String?
-            do { _ = try Self.git(path, arguments); failure = nil }
-            catch { failure = error.localizedDescription }
-            DispatchQueue.main.async {
-                self.busy = false; self.error = failure
-                self.refresh(self.directory)
-                if failure == nil { completion() }
-            }
-        }
-    }
-}
-
-private struct GoviRepositoryDock: View {
-    @ObservedObject private var usage = GoviUsageStore.shared
-    @Environment(\.goviPalette) private var ui
-
-    let directory: String
-    let openFolder: (String) -> Void
-    @ObservedObject var changes: GoviGitChanges
-    let visible: Bool
-    let showChanges: () -> Void
-    @StateObject private var repository = GoviRepository()
-    @State private var popover: String?
-    @State private var worktreeName = ""
-    /// A slow fallback; file events (via `changes`) drive normal refreshes.
-    private let refresh = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    var body: some View {
-        HStack(spacing: 9) {
-            if changes.root != nil {
-                Button(action: showChanges) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.triangle.branch").font(.system(size: 10.5, weight: .medium))
-                        if changes.files.isEmpty {
-                            Text(changes.ahead > 0 ? "↑\(changes.ahead)" : "Clean").font(GoviInk.font(11.5))
-                        } else {
-                            GoviDiffStat(additions: changes.additions, deletions: changes.deletions)
-                        }
-                    }.padding(.horizontal, 4).frame(height: 28).contentShape(Rectangle())
-                }
-                .help(changes.files.isEmpty ? "\(changes.branch) · no changes" : "\(changes.branch) · \(changes.files.count) changed file\(changes.files.count == 1 ? "" : "s") · diff, commit and push")
-                .accessibilityLabel("Git changes")
-                separator
-            }
-            Button { popover = "worktrees"; repository.refresh(directory) } label: { Image(systemName: "square.stack.3d.up") }
-                .help("Git worktrees").accessibilityLabel("Git worktrees")
-                .popover(isPresented: showing("worktrees")) { worktreePopover }
-            if !usage.visibleAgents.isEmpty {
-                separator
-                GoviUsageRings()
-            }
-
-            if repository.busy { ProgressView().controlSize(.mini) }
-        }.buttonStyle(.plain).font(GoviInk.font(11)).foregroundStyle(ui.muted)
-            .padding(.horizontal, 10).frame(height: 40)
-            .modifier(GoviGlassControl())
-            .onAppear {
-                changes.refresh(directory)
-                repository.refresh(directory)
-                for agent in GoviAgent.allCases { usage.refresh(agent) }
-            }
-            .onChange(of: directory) { repository.refresh($0); changes.refresh($0) }
-            .onChange(of: changes.metadataRevision) { _ in repository.refresh(directory) }
-            .onReceive(refresh) { _ in
-                guard visible else { return }
-                changes.refresh(directory)
-                repository.refresh(directory)
-                for agent in GoviAgent.allCases { usage.refresh(agent) }
-            }
-    }
-    private var separator: some View { Rectangle().fill(ui.line).frame(width: 0.5, height: 12) }
-    private func showing(_ name: String) -> Binding<Bool> {
-        Binding(get: { popover == name }, set: { if !$0 { popover = nil } })
-    }
-    private var worktreePopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Worktrees").font(.headline)
-            if repository.branch.isEmpty { Text("Open a Git project to manage its worktrees.").foregroundStyle(ui.muted) }
-            else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(repository.worktrees) { tree in
-                            Button { openFolder(tree.path); popover = nil } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(tree.branch)
-                                    Text(GoviPaneNaming.shortPath(tree.path)).font(GoviInk.font(10)).foregroundStyle(ui.muted)
-                                }.frame(maxWidth: .infinity, alignment: .leading).padding(5).contentShape(Rectangle())
-                            }.buttonStyle(.plain)
-                        }
-                    }
-                }.frame(maxHeight: 190)
-                Divider()
-                TextField("New worktree branch", text: $worktreeName).textFieldStyle(.roundedBorder)
-                Button("Choose location and create…", action: createWorktree)
-                    .disabled(repository.busy || !validName(worktreeName))
-            }
-            errorMessage
-        }.padding(18).frame(width: 320).foregroundStyle(ui.ink).background(ui.paper)
-    }
-    @ViewBuilder private var errorMessage: some View {
-        if let error = repository.error { Text(error).font(GoviInk.font(11)).foregroundStyle(.red).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
-    }
-    private func validName(_ name: String) -> Bool { !name.isEmpty && !name.hasPrefix("-") && !name.contains(where: { $0.isWhitespace }) }
-    private func createWorktree() {
-        let panel = NSSavePanel()
-        panel.title = "Create Git worktree"; panel.prompt = "Create"; panel.nameFieldStringValue = worktreeName.replacingOccurrences(of: "/", with: "-")
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        repository.run(["worktree", "add", "-b", worktreeName, "--", url.path]) {
-            worktreeName = ""; openFolder(url.path); popover = nil
-        }
-    }
-}
-
-/// Launch splash: the signature is written stroke by stroke. A thick pen runs along
-/// hand-traced centerlines of the wordmark (in writing order) and reveals the real
-/// artwork beneath it, so the result is pixel-identical to the brand image.
-struct GoviLaunchSplash: View {
-    @MainActor private static var shown = false
-    /// True only for the first workbench of this app launch.
-    @MainActor static func claim() -> Bool {
-        guard UserDefaults.standard.bool(forKey: "GoviLaunchAnimation") else { return false }
-        defer { shown = true }; return !shown
-    }
-
-    let finish: () -> Void
-    @Environment(\.goviPalette) private var ui
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var progress: CGFloat = 0
-    @State private var settled = false
-    @State private var leaving = false
-    private static let image = NSImage(contentsOf: GoviResources.resourceURL.appendingPathComponent("Brand/GoviWordmark.png"))
-    private let size: CGFloat = 340
-
-    var body: some View {
-        ZStack {
-            ui.canvas
-            if let image = Self.image {
-                let mark = ui.ink.mask(Image(nsImage: image).resizable().interpolation(.high).scaledToFit().colorInvert().luminanceToAlpha())
-                mark.mask {
-                    if settled { Color.black } else {
-                        GoviSignaturePen().trim(from: 0, to: progress)
-                            .stroke(style: StrokeStyle(lineWidth: size * 88 / GoviSignaturePen.canvas, lineCap: .round, lineJoin: .round))
-                    }
-                }
-                .frame(width: size, height: size)
-                .scaleEffect(leaving ? 1.04 : 1)
-            }
-        }
-        .ignoresSafeArea()
-        .opacity(leaving ? 0 : 1)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-        .task {
-            if reduceMotion {
-                settled = true
-                try? await Task.sleep(nanoseconds: 600_000_000)
-            } else {
-                try? await Task.sleep(nanoseconds: 150_000_000)
-                withAnimation(.timingCurve(0.45, 0.05, 0.35, 1, duration: 1.6)) { progress = 1 }
-                try? await Task.sleep(nanoseconds: 1_600_000_000)
-                withAnimation(.easeOut(duration: 0.2)) { settled = true }
-                try? await Task.sleep(nanoseconds: 350_000_000)
-            }
-            withAnimation(.easeInOut(duration: 0.45)) { leaving = true }
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            finish()
-        }
-    }
-}
-
-/// Centerlines of each wordmark stroke, in writing order, in the artwork's 1254-px space.
-struct GoviSignaturePen: Shape {
-    static let canvas: CGFloat = 1254
-    private static let strokes: [[CGPoint]] = [
-        // G: hook, then the long sweep round the bowl and back along the base
-        [(505, 552), (578, 472), (530, 482), (420, 525), (300, 585), (200, 645), (152, 698), (180, 716), (270, 714), (400, 700), (525, 676)],
-        // G crossbar
-        [(335, 647), (450, 627), (608, 578)],
-        // descender
-        [(395, 812), (470, 730), (555, 648), (612, 592)],
-        // O: up to the apex, out to the point, back along the base
-        [(545, 694), (630, 628), (718, 568), (815, 615), (700, 660), (570, 704), (540, 706)],
-        // O: cap
-        [(662, 552), (722, 545), (812, 606)],
-        // V
-        [(800, 528), (835, 640), (858, 762), (875, 752), (930, 640), (1000, 540), (1072, 442)],
-        // I: top bar, stem, base
-        [(1018, 567), (1105, 527)],
-        [(1055, 552), (1015, 645), (985, 738)],
-        [(930, 772), (980, 752), (1045, 745)],
-    ].map { $0.map { CGPoint(x: $0.0, y: $0.1) } }
-
-    func path(in rect: CGRect) -> Path {
-        let scale = min(rect.width, rect.height) / Self.canvas
-        let origin = CGPoint(x: rect.midX - Self.canvas * scale / 2, y: rect.midY - Self.canvas * scale / 2)
-        var path = Path()
-        for stroke in Self.strokes {
-            let points = stroke.map { CGPoint(x: origin.x + $0.x * scale, y: origin.y + $0.y * scale) }
-            path.move(to: points[0])
-            // Midpoint quadratics smooth the polyline into a pen-like curve.
-            for i in 1..<points.count {
-                let mid = CGPoint(x: (points[i - 1].x + points[i].x) / 2, y: (points[i - 1].y + points[i].y) / 2)
-                if i == 1 { path.addLine(to: mid) } else { path.addQuadCurve(to: mid, control: points[i - 1]) }
-            }
-            path.addLine(to: points[points.count - 1])
-        }
-        return path
-    }
-}
-
-
-/// Tasks tabs, one per workspace window at most. Kept outside the window's view so the
-/// sidebar (drawn by whichever workspace is key) can list and switch every workspace's tab.
-final class GoviTasksTabs: ObservableObject {
-    static let shared = GoviTasksTabs()
-    /// Windows that have a Tasks tab.
-    @Published private(set) var tabs: Set<Int> = []
-    /// Windows whose Tasks tab is in front of their terminals.
-    @Published private(set) var showing: Set<Int> = []
-
-    func setShowing(_ window: Int, _ shown: Bool) {
-        if shown { tabs.insert(window); showing.insert(window) } else { showing.remove(window) }
-    }
-    func close(_ window: Int) { tabs.remove(window); showing.remove(window) }
-    func prune(keeping windows: Set<Int>) {
-        let keptTabs = tabs.intersection(windows), keptShowing = showing.intersection(windows)
-        if keptTabs != tabs { tabs = keptTabs }
-        if keptShowing != showing { showing = keptShowing }
-    }
-}
-
-/// The sidebar row for a workspace's Tasks tab, styled like a terminal row.
-struct GoviSidebarTasksTab: View {
-    @Environment(\.goviPalette) private var ui
-    @AppStorage("GoviTasksProvider") private var provider = "github"
-    @AppStorage("GoviTasksRepository") private var repository = ""
-    @State private var hovering = false
-    let active: Bool
-    let select: () -> Void
-    let close: () -> Void
-    private var subtitle: String { provider == "linear" ? "Linear" : (repository.isEmpty ? "GitHub" : repository) }
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: select) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checklist").font(.system(size: 11)).foregroundStyle(ui.accent)
-                        .frame(width: GoviSidebarMetrics.icon, height: GoviSidebarMetrics.icon)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Tasks").lineLimit(1)
-                        Text(subtitle).font(GoviInk.font(10.5)).foregroundStyle(ui.muted).lineLimit(1).truncationMode(.middle)
-                    }
-                    Spacer(minLength: 0)
-                }.padding(.vertical, 5).padding(.trailing, 4).contentShape(Rectangle())
-            }.buttonStyle(.plain).help("GitHub and Linear tasks")
-            Button(action: close) {
-                Image(systemName: "xmark").font(.system(size: 9.5, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
-            }.buttonStyle(.plain).help("Close Tasks").accessibilityLabel("Close Tasks")
-                .opacity(hovering ? 1 : 0)
-        }.font(GoviInk.font(12.5).weight(.light))
-            .foregroundStyle(active ? ui.ink : ui.muted)
-            .padding(.horizontal, GoviSidebarMetrics.inset)
-            .frame(minHeight: GoviSidebarMetrics.row)
-            .background(active ? ui.ink.opacity(0.10) : ui.ink.opacity(hovering ? 0.05 : 0), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay(alignment: .leading) {
-                if active { Capsule().fill(ui.accent).frame(width: 2.5, height: 16).offset(x: -1) }
-            }
-            .contentShape(Rectangle()).onHover { hovering = $0 }
-            .contextMenu { Button("Close Tasks", action: close) }
     }
 }

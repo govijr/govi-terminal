@@ -32,13 +32,18 @@ struct GoviRemoteTarget: Codable, Equatable, Hashable {
             return !value.isEmpty && value.utf8.count <= 253 && !value.hasPrefix("-") && value.unicodeScalars.allSatisfy(allowed.contains)
         }
         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Give this host a name." }
-        if name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) || name.count > 128 { return "Use a shorter name without control characters." }
+        if name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) || name.count > 128 {
+            return "Use a shorter name without control characters."
+        }
         if !token(host) { return "Enter a host name, IP address or ~/.ssh/config alias (no spaces, not starting with “-”)." }
         if let user, !token(user, extra: "@\\$") { return "User names can't contain spaces or start with “-”." }
         if let port, !(1...65535).contains(port) { return "Ports are 1 to 65535." }
         if let jumpHost, !token(jumpHost, extra: "@,") { return "Jump hosts look like user@host:port, separated by commas." }
-        if let identityFile, identityFile.isEmpty || identityFile.utf8.count > 1024 || identityFile.hasPrefix("-")
-            || identityFile.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) || !(identityFile.hasPrefix("/") || identityFile.hasPrefix("~")) {
+        if let identityFile,
+            identityFile.isEmpty || identityFile.utf8.count > 1024 || identityFile.hasPrefix("-")
+                || identityFile.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+                || !(identityFile.hasPrefix("/") || identityFile.hasPrefix("~"))
+        {
             return "Choose an identity file by its full path."
         }
         if let directory, directory.utf8.count > 1024 || directory.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) {
@@ -56,9 +61,16 @@ struct GoviRemoteTarget: Codable, Equatable, Hashable {
         var copy = self
         copy.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        copy.user = clean(user); copy.identityFile = clean(identityFile); copy.jumpHost = clean(jumpHost); copy.directory = clean(directory)
+        copy.user = clean(user)
+        copy.identityFile = clean(identityFile)
+        copy.jumpHost = clean(jumpHost)
+        copy.directory = clean(directory)
         if copy.directory == "~" { copy.directory = nil }
-        if transport == .tailscale { copy.port = nil; copy.identityFile = nil; copy.jumpHost = nil }
+        if transport == .tailscale {
+            copy.port = nil
+            copy.identityFile = nil
+            copy.jumpHost = nil
+        }
         return copy
     }
 }
@@ -91,8 +103,12 @@ enum GoviSSHConfig {
             case "host":
                 current = []
                 for alias in arguments where !alias.contains(where: { "*?!".contains($0) }) && !alias.hasPrefix("-") {
-                    if let index = entries.firstIndex(where: { $0.alias == alias }) { current.append(index) }
-                    else { entries.append(.init(alias: alias)); current.append(entries.count - 1) }
+                    if let index = entries.firstIndex(where: { $0.alias == alias }) {
+                        current.append(index)
+                    } else {
+                        entries.append(.init(alias: alias))
+                        current.append(entries.count - 1)
+                    }
                 }
             case "match":
                 current = []
@@ -100,7 +116,8 @@ enum GoviSSHConfig {
                 guard depth < 4 else { continue }
                 for pattern in arguments {
                     for file in include(pattern) {
-                        for entry in parse(file, depth: depth + 1, include: include) where !entries.contains(where: { $0.alias == entry.alias }) {
+                        for entry in parse(file, depth: depth + 1, include: include)
+                        where !entries.contains(where: { $0.alias == entry.alias }) {
                             entries.append(entry)
                         }
                     }
@@ -123,12 +140,23 @@ enum GoviSSHConfig {
 
     /// Splits `Keyword args`, `Keyword=args` and double-quoted arguments; drops comments.
     static func split(_ line: String) -> (String?, [String]) {
-        var tokens: [String] = [], token = "", quoted = false, started = false
+        var tokens: [String] = []
+        var token = ""
+        var quoted = false
+        var started = false
         for character in line {
-            if character == "\"" { quoted.toggle(); started = true; continue }
+            if character == "\"" {
+                quoted.toggle()
+                started = true
+                continue
+            }
             if !quoted && character == "#" && token.isEmpty { break }
             if !quoted && (character == " " || character == "\t" || (character == "=" && tokens.isEmpty)) {
-                if started || !token.isEmpty { tokens.append(token); token = ""; started = false }
+                if started || !token.isEmpty {
+                    tokens.append(token)
+                    token = ""
+                    started = false
+                }
                 continue
             }
             token.append(character)
@@ -143,14 +171,18 @@ enum GoviSSHConfig {
         let sshDirectory = home + "/.ssh"
         func read(_ path: String) -> String? {
             guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-                  (attributes[.size] as? NSNumber)?.intValue ?? 0 <= 1_048_576 else { return nil }
+                (attributes[.size] as? NSNumber)?.intValue ?? 0 <= 1_048_576
+            else { return nil }
             return try? String(contentsOfFile: path, encoding: .utf8)
         }
         guard let text = read(sshDirectory + "/config") else { return [] }
         return parse(text) { pattern in
             var expanded = pattern
-            if expanded.hasPrefix("~/") { expanded = home + expanded.dropFirst() }
-            else if !expanded.hasPrefix("/") { expanded = sshDirectory + "/" + expanded }
+            if expanded.hasPrefix("~/") {
+                expanded = home + expanded.dropFirst()
+            } else if !expanded.hasPrefix("/") {
+                expanded = sshDirectory + "/" + expanded
+            }
             var result = glob_t()
             defer { globfree(&result) }
             guard glob(expanded, 0, nil, &result) == 0 else { return [] }
@@ -226,15 +258,17 @@ struct GoviTailnet: Equatable {
                 return parts.count >= 2 && (parts[0].hasPrefix("ssh-") || parts[0].hasPrefix("ecdsa-")) && key.utf8.count <= 8192
                     && !key.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
             }
-            return .init(id: peer.ID ?? dns ?? addresses[0], name: name, dnsName: dns, addresses: addresses, os: peer.OS,
-                         online: isSelf || peer.Online == true, sshHostKeys: keys, tags: peer.Tags ?? [], isSelf: isSelf)
+            return .init(
+                id: peer.ID ?? dns ?? addresses[0], name: name, dnsName: dns, addresses: addresses, os: peer.OS,
+                online: isSelf || peer.Online == true, sshHostKeys: keys, tags: peer.Tags ?? [], isSelf: isSelf)
         }
         var devices = (status.peers ?? [:]).values.compactMap { device($0, isSelf: false) }
         devices.sort { ($0.online ? 0 : 1, $0.name.lowercased()) < ($1.online ? 0 : 1, $1.name.lowercased()) }
         if let me = status.me.flatMap({ device($0, isSelf: true) }) { devices.insert(me, at: 0) }
         let suffix = status.MagicDNSSuffix.flatMap { $0.isEmpty ? nil : $0 }
-        return .init(backendState: status.BackendState ?? "Unknown", tailnetName: status.CurrentTailnet?.Name ?? suffix,
-                     magicDNSSuffix: suffix, devices: devices)
+        return .init(
+            backendState: status.BackendState ?? "Unknown", tailnetName: status.CurrentTailnet?.Name ?? suffix,
+            magicDNSSuffix: suffix, devices: devices)
     }
 
     /// OpenSSH known_hosts lines for every device that publishes host keys.
@@ -248,8 +282,10 @@ struct GoviTailnet: Equatable {
     }
 
     /// Standalone and Homebrew installs, then the Mac app's bundled CLI.
-    static let executableCandidates = ["/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale",
-                                       "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]
+    static let executableCandidates = [
+        "/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale",
+        "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    ]
 }
 
 // MARK: - Commands
@@ -267,14 +303,17 @@ enum GoviRemoteCommand {
     static func remoteStartup(_ directory: String) -> String {
         let q = GoviShell.quote
         let cd: String
-        if directory.hasPrefix("~/") { cd = "cd -- \"$HOME\"/" + q(String(directory.dropFirst(2))) }
-        else { cd = "cd -- " + q(directory) }
-        let script = cd + " 2>/dev/null || printf '%s\\n' " + q("Govi: " + directory + " is not available on this host.") + " >&2; exec \"${SHELL:-/bin/sh}\" -l"
+        if directory.hasPrefix("~/") { cd = "cd -- \"$HOME\"/" + q(String(directory.dropFirst(2))) } else { cd = "cd -- " + q(directory) }
+        let script =
+            cd + " 2>/dev/null || printf '%s\\n' " + q("Govi: " + directory + " is not available on this host.")
+            + " >&2; exec \"${SHELL:-/bin/sh}\" -l"
         return "exec /bin/sh -c " + q(script)
     }
 
     /// The ssh invocation as separate arguments, or nil if the target is invalid.
-    static func arguments(_ target: GoviRemoteTarget, ssh: String = "/usr/bin/ssh", knownHosts: String? = tailnetKnownHostsPath) -> [String]? {
+    static func arguments(
+        _ target: GoviRemoteTarget, ssh: String = "/usr/bin/ssh", knownHosts: String? = tailnetKnownHostsPath
+    ) -> [String]? {
         let target = target.normalized()
         guard target.validationError == nil else { return nil }
         var argv = [ssh]
@@ -308,21 +347,23 @@ enum GoviRemoteCommand {
     /// The program a pane runs: a login shell for the user's PATH (ProxyCommand
     /// helpers often live in Homebrew), then a POSIX loop that offers to
     /// reconnect when the connection drops instead of closing the pane.
-    static func pane(_ target: GoviRemoteTarget, shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
-                     ssh: String = "/usr/bin/ssh") -> String? {
+    static func pane(
+        _ target: GoviRemoteTarget, shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
+        ssh: String = "/usr/bin/ssh"
+    ) -> String? {
         guard let argv = arguments(target, ssh: ssh) else { return nil }
         let q = GoviShell.quote
         let name = target.name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(String.init).joined()
         let loop = """
-        case "$TERM" in xterm-ghostty) TERM=xterm-256color; export TERM;; esac
-        while :; do
-          \(argv.map(q).joined(separator: " "))
-          s=$?
-          [ "$s" -eq 0 ] && exit 0
-          printf '\\r\\n\\033[2m%s (exit %s). Press Return to reconnect, or Control-D to close.\\033[0m\\r\\n' \(q("Connection to " + name + " ended")) "$s"
-          read -r _ || exit "$s"
-        done
-        """
+            case "$TERM" in xterm-ghostty) TERM=xterm-256color; export TERM;; esac
+            while :; do
+              \(argv.map(q).joined(separator: " "))
+              s=$?
+              [ "$s" -eq 0 ] && exit 0
+              printf '\\r\\n\\033[2m%s (exit %s). Press Return to reconnect, or Control-D to close.\\033[0m\\r\\n' \(q("Connection to " + name + " ended")) "$s"
+              read -r _ || exit "$s"
+            done
+            """
         return q(shell) + " -lc " + q("exec /bin/sh -c " + q(loop))
     }
 }

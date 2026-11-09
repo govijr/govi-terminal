@@ -7,7 +7,8 @@ enum GoviDataPaths {
     static var supportDirectory: URL {
         let identity = Bundle.main.bundleIdentifier ?? "dev.govi.terminal"
         let name = identity == "dev.govi.terminal" ? "Govi" : "Govi-" + identity
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/" + name, isDirectory: true)
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+            "Library/Application Support/" + name, isDirectory: true)
     }
 }
 
@@ -57,7 +58,8 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
         switch self {
         case .terminal(let pane): return .terminal(transform(pane))
         case .split(let vertical, let ratio, let first, let second):
-            return .split(vertical: vertical, ratio: ratio, first: first.replacingPanes(transform), second: second.replacingPanes(transform))
+            return .split(
+                vertical: vertical, ratio: ratio, first: first.replacingPanes(transform), second: second.replacingPanes(transform))
         }
     }
 
@@ -75,7 +77,10 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
     /// Templates always create new programs and IDs, never attach to the source.
     func freshInstance() -> Self {
         replacingPanes { pane in
-            var copy = pane; copy.id = UUID(); copy.persistentName = nil; return copy
+            var copy = pane
+            copy.id = UUID()
+            copy.persistentName = nil
+            return copy
         }
     }
 }
@@ -107,40 +112,43 @@ struct GoviWorkspaceTemplate: Codable, Equatable, Identifiable {
 
 enum GoviShell {
     static func quote(_ text: String) -> String { "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-    static let agentExitStatus = "govi_exit=$?; if [ -n \"$GOVI_NOTIFY\" ]; then if [ \"$govi_exit\" -ne 0 ]; then /bin/zsh -f \"$GOVI_NOTIFY\" error; else /bin/zsh -f \"$GOVI_NOTIFY\" idle; fi; fi; "
+    static let agentExitStatus =
+        "govi_exit=$?; if [ -n \"$GOVI_NOTIFY\" ]; then if [ \"$govi_exit\" -ne 0 ]; then /bin/zsh -f \"$GOVI_NOTIFY\" error; else /bin/zsh -f \"$GOVI_NOTIFY\" idle; fi; fi; "
 }
 
 /// Shared with the reconnect regression: the script under test is the script
 /// launched by production panes.
 enum GoviSessionScript {
-    static func make(hc: String, name: String, id: UUID, shell: String, directory: String,
-                     program: String, assignments: String, socket: String, restoring: Bool, version: Int) -> String {
+    static func make(
+        hc: String, name: String, id: UUID, shell: String, directory: String,
+        program: String, assignments: String, socket: String, restoring: Bool, version: Int
+    ) -> String {
         let q = GoviShell.quote
         let reportSocket = socket
         let script = """
-        hc=\(q(hc)); n=\(q(name))
-        own() { "$hc" get --json "$n" 2>/dev/null | /usr/bin/grep -Eq '"govi"[[:space:]]*:[[:space:]]*"1"'; }
-        live() { "$hc" get --json "$n" 2>/dev/null | /usr/bin/grep -Eq '"state"[[:space:]]*:[[:space:]]*"live"'; }
-        report() { printf 'P\\t0\\t{"id":"\(id.uuidString)","live":%s,"recovered":%s}\\n' "$1" "$2" | /usr/bin/nc -w 1 -U \(q(reportSocket)) >/dev/null 2>&1; }
-        recovered=false
-        if ! live; then
-          own && "$hc" rm "$n" >/dev/null 2>&1
-          if ! "$hc" run --bg --keep --no-parent --name "$n" --label govi=1 --label goviv=\(version) --cwd \(q(directory)) -- env \(assignments) \(program) >/dev/null 2>&1; then
-            report false \(restoring ? "true" : "false")
-            printf '\\033[2mGovi could not keep this terminal running in the background. This shell will close when Govi quits.\\033[0m\\r\\n'
+            hc=\(q(hc)); n=\(q(name))
+            own() { "$hc" get --json "$n" 2>/dev/null | /usr/bin/grep -Eq '"govi"[[:space:]]*:[[:space:]]*"1"'; }
+            live() { "$hc" get --json "$n" 2>/dev/null | /usr/bin/grep -Eq '"state"[[:space:]]*:[[:space:]]*"live"'; }
+            report() { printf 'P\\t0\\t{"id":"\(id.uuidString)","live":%s,"recovered":%s}\\n' "$1" "$2" | /usr/bin/nc -w 1 -U \(q(reportSocket)) >/dev/null 2>&1; }
+            recovered=false
+            if ! live; then
+              own && "$hc" rm "$n" >/dev/null 2>&1
+              if ! "$hc" run --bg --keep --no-parent --name "$n" --label govi=1 --label goviv=\(version) --cwd \(q(directory)) -- env \(assignments) \(program) >/dev/null 2>&1; then
+                report false \(restoring ? "true" : "false")
+                printf '\\033[2mGovi could not keep this terminal running in the background. This shell will close when Govi quits.\\033[0m\\r\\n'
+                exec \(q(shell)) -l
+              fi
+              recovered=\(restoring ? "true" : "false")
+            elif ! own; then
+              report false true
+              printf 'Govi could not reconnect to its saved session. Opening a fresh shell.\\r\\n'
+              exec \(q(shell)) -l
+            fi
+            report true "$recovered"
+            while live; do "$hc" attach --history 5000 "$n" || sleep 1; done
+            report false true
             exec \(q(shell)) -l
-          fi
-          recovered=\(restoring ? "true" : "false")
-        elif ! own; then
-          report false true
-          printf 'Govi could not reconnect to its saved session. Opening a fresh shell.\\r\\n'
-          exec \(q(shell)) -l
-        fi
-        report true "$recovered"
-        while live; do "$hc" attach --history 5000 "$n" || sleep 1; done
-        report false true
-        exec \(q(shell)) -l
-        """
+            """
         return "/bin/sh -c " + q(script)
     }
 }
@@ -167,8 +175,9 @@ struct GoviActivitySignal: Decodable {
     let label: String?
     static func decode(_ value: String) -> Self? {
         guard value.utf8.count <= 2048, let data = value.data(using: .utf8),
-              let signal = try? JSONDecoder().decode(Self.self, from: data),
-              signal.label.map({ $0.count <= 256 && !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }) ?? true else { return nil }
+            let signal = try? JSONDecoder().decode(Self.self, from: data),
+            signal.label.map({ $0.count <= 256 && !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }) ?? true
+        else { return nil }
         return signal
     }
 }
@@ -184,10 +193,14 @@ struct GoviReportedActivity: Equatable {
     var visibleState: GoviActivityState { state.wantsAttention && acknowledged ? .idle : state }
     mutating func receive(_ next: GoviActivityState, now: Date = Date()) {
         guard next != state else { return }
-        if next == .working && state != .working && state != .needsInput { startedAt = now; endedAt = nil }
+        if next == .working && state != .working && state != .needsInput {
+            startedAt = now
+            endedAt = nil
+        }
         if next == .done || next == .error { endedAt = now }
         if next != state { changedAt = now }
-        state = next; acknowledged = false
+        state = next
+        acknowledged = false
     }
     mutating func acknowledge() { if state.wantsAttention { acknowledged = true } }
 }
@@ -211,7 +224,9 @@ enum GoviClaudeHooks {
         }
         // Only strings, numbers and nested containers, so encoding cannot fail;
         // an empty hook set is the safe fallback all the same.
-        guard let data = try? JSONSerialization.data(withJSONObject: ["hooks": hooks], options: [.sortedKeys]) else { return #"{"hooks":{}}"# }
+        guard let data = try? JSONSerialization.data(withJSONObject: ["hooks": hooks], options: [.sortedKeys]) else {
+            return #"{"hooks":{}}"#
+        }
         return String(decoding: data, as: UTF8.self)
     }
 }
@@ -220,21 +235,29 @@ struct GoviKeyChord: Codable, Hashable {
     var key: String
     /// Control, Option, Shift, Command, in that order.
     var modifiers: Int
-    static let characters: [String: String] = ["comma": ",", "period": ".", "slash": "/", "semicolon": ";", "quote": "'", "bracket_left": "[", "bracket_right": "]", "backslash": "\\", "minus": "-", "equal": "=", "backquote": "`", "enter": "\r", "space": " ", "tab": "\t", "arrow_left": "\u{f702}", "arrow_right": "\u{f703}", "arrow_up": "\u{f700}", "arrow_down": "\u{f701}"]
+    static let characters: [String: String] = [
+        "comma": ",", "period": ".", "slash": "/", "semicolon": ";", "quote": "'", "bracket_left": "[", "bracket_right": "]",
+        "backslash": "\\", "minus": "-", "equal": "=", "backquote": "`", "enter": "\r", "space": " ", "tab": "\t", "arrow_left": "\u{f702}",
+        "arrow_right": "\u{f703}", "arrow_up": "\u{f700}", "arrow_down": "\u{f701}",
+    ]
     var character: String { Self.characters[key] ?? key }
     var isValid: Bool {
-        let validKey = (key.count == 1 && key.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) }) || Self.characters[key] != nil
+        let validKey =
+            (key.count == 1 && key.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) }) || Self.characters[key] != nil
         return validKey && modifiers >= 1 && modifiers < 16 && modifiers & 9 != 0
     }
     var binding: String {
         var pieces: [String] = []
         for (mask, word) in [(1, "ctrl"), (2, "alt"), (4, "shift"), (8, "super")] where modifiers & mask != 0 { pieces.append(word) }
-        pieces.append(key); return pieces.joined(separator: "+")
+        pieces.append(key)
+        return pieces.joined(separator: "+")
     }
     var symbols: [String] {
         var pieces: [String] = []
         for (mask, word) in [(1, "⌃"), (2, "⌥"), (4, "⇧"), (8, "⌘")] where modifiers & mask != 0 { pieces.append(word) }
-        pieces.append(["enter": "⏎", "space": "␣", "tab": "⇥", "arrow_left": "◀", "arrow_right": "▶", "arrow_up": "▲", "arrow_down": "▼"][key] ?? character.uppercased())
+        pieces.append(
+            ["enter": "⏎", "space": "␣", "tab": "⇥", "arrow_left": "◀", "arrow_right": "▶", "arrow_up": "▲", "arrow_down": "▼"][key]
+                ?? character.uppercased())
         return pieces
     }
     var display: String { symbols.joined() }
@@ -254,31 +277,66 @@ enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .newWorkspace: "New workspace"; case .newWindow: "New window"; case .closeTerminal: "Close terminal"
-        case .splitRight: "Split right"; case .splitDown: "Split below"; case .zoom: "Zoom focused terminal"
-        case .left: "Focus left terminal"; case .right: "Focus right terminal"; case .up: "Focus terminal above"; case .down: "Focus terminal below"
-        case .palette: "Command palette"; case .find: "Find in output"; case .search: "Search terminals"
-        case .settings: "Settings"; case .focusMode: "Focus mode"; case .sidebar: "Toggle sidebar"
-        case .attention: "Needs attention"; case .nextAttention: "Next terminal needing attention"; case .templates: "Project templates"
+        case .newWorkspace: "New workspace"
+        case .newWindow: "New window"
+        case .closeTerminal: "Close terminal"
+        case .splitRight: "Split right"
+        case .splitDown: "Split below"
+        case .zoom: "Zoom focused terminal"
+        case .left: "Focus left terminal"
+        case .right: "Focus right terminal"
+        case .up: "Focus terminal above"
+        case .down: "Focus terminal below"
+        case .palette: "Command palette"
+        case .find: "Find in output"
+        case .search: "Search terminals"
+        case .settings: "Settings"
+        case .focusMode: "Focus mode"
+        case .sidebar: "Toggle sidebar"
+        case .attention: "Needs attention"
+        case .nextAttention: "Next terminal needing attention"
+        case .templates: "Project templates"
         case .remoteHosts: "Remote hosts"
         }
     }
     var defaultChord: GoviKeyChord {
-        let pair: (String, Int) = switch self {
-        case .newWorkspace: ("t", 8); case .newWindow: ("n", 8); case .closeTerminal: ("w", 8)
-        case .splitRight: ("d", 8); case .splitDown: ("d", 12); case .zoom: ("enter", 12)
-        case .left: ("arrow_left", 10); case .right: ("arrow_right", 10); case .up: ("arrow_up", 10); case .down: ("arrow_down", 10)
-        case .palette: ("k", 8); case .find: ("f", 8); case .search: ("p", 8); case .settings: ("comma", 8)
-        case .focusMode: ("f", 12); case .sidebar: ("s", 10); case .attention: ("a", 12); case .nextAttention: ("j", 10); case .templates: ("t", 10)
-        case .remoteHosts: ("r", 12)
-        }
+        let pair: (String, Int) =
+            switch self {
+            case .newWorkspace: ("t", 8)
+            case .newWindow: ("n", 8)
+            case .closeTerminal: ("w", 8)
+            case .splitRight: ("d", 8)
+            case .splitDown: ("d", 12)
+            case .zoom: ("enter", 12)
+            case .left: ("arrow_left", 10)
+            case .right: ("arrow_right", 10)
+            case .up: ("arrow_up", 10)
+            case .down: ("arrow_down", 10)
+            case .palette: ("k", 8)
+            case .find: ("f", 8)
+            case .search: ("p", 8)
+            case .settings: ("comma", 8)
+            case .focusMode: ("f", 12)
+            case .sidebar: ("s", 10)
+            case .attention: ("a", 12)
+            case .nextAttention: ("j", 10)
+            case .templates: ("t", 10)
+            case .remoteHosts: ("r", 12)
+            }
         return .init(key: pair.0, modifiers: pair.1)
     }
     var terminalAction: String? {
         switch self {
-        case .newWorkspace: "new_tab"; case .newWindow: "new_window"; case .closeTerminal: "close_surface"
-        case .splitRight: "new_split:right"; case .splitDown: "new_split:down"; case .zoom: "toggle_split_zoom"
-        case .left: "goto_split:left"; case .right: "goto_split:right"; case .up: "goto_split:up"; case .down: "goto_split:down"
+        case .newWorkspace: "new_tab"
+        case .newWindow: "new_window"
+        case .closeTerminal: "close_surface"
+        case .splitRight: "new_split:right"
+        case .splitDown: "new_split:down"
+        case .zoom: "toggle_split_zoom"
+        case .left: "goto_split:left"
+        case .right: "goto_split:right"
+        case .up: "goto_split:up"
+        case .down: "goto_split:down"
         case .palette: "toggle_command_palette"
         default: nil
         }
@@ -288,10 +346,13 @@ enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
 enum GoviShortcutPreferences {
     static func load() -> [String: GoviKeyChord] {
         guard let data = UserDefaults.standard.data(forKey: "GoviShortcutsV1"),
-              let values = try? JSONDecoder().decode([String: GoviKeyChord].self, from: data) else { return [:] }
+            let values = try? JSONDecoder().decode([String: GoviKeyChord].self, from: data)
+        else { return [:] }
         return values.filter { GoviShortcutAction(rawValue: $0.key) != nil && $0.value.isValid && !$0.value.isReserved }
     }
-    static func chord(_ action: GoviShortcutAction, values: [String: GoviKeyChord]) -> GoviKeyChord { values[action.rawValue] ?? action.defaultChord }
+    static func chord(_ action: GoviShortcutAction, values: [String: GoviKeyChord]) -> GoviKeyChord {
+        values[action.rawValue] ?? action.defaultChord
+    }
     static func conflict(_ chord: GoviKeyChord, for action: GoviShortcutAction, values: [String: GoviKeyChord]) -> String? {
         guard chord.isValid else { return "Use Command or Control with a letter, number, punctuation, arrow, Return, Space or Tab." }
         guard !chord.isReserved else { return "This combination is reserved for macOS, text editing or terminal control." }
@@ -314,4 +375,3 @@ enum GoviShortcutPreferences {
         return lines.joined(separator: "\n") + "\n"
     }
 }
-

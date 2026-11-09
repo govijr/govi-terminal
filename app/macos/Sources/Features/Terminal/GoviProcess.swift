@@ -23,13 +23,23 @@ enum GoviLocalProcess {
         private let lock = NSLock()
         private var flag = false
         init() {}
-        var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return flag }
-        func cancel() { lock.lock(); flag = true; lock.unlock() }
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return flag
+        }
+        func cancel() {
+            lock.lock()
+            flag = true
+            lock.unlock()
+        }
     }
 
-    static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval = 4, limit: Int = 262_144,
-                    environment: [String: String]? = nil, directory: String? = nil, errors: Errors = .discard,
-                    cancellation: Cancellation? = nil) -> Result? {
+    static func run(
+        _ executable: String, _ arguments: [String], timeout: TimeInterval = 4, limit: Int = 262_144,
+        environment: [String: String]? = nil, directory: String? = nil, errors: Errors = .discard,
+        cancellation: Cancellation? = nil
+    ) -> Result? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -61,17 +71,25 @@ enum GoviLocalProcess {
         }
 
         let deadline = Date().addingTimeInterval(timeout)
-        var timedOut = false, cancelled = false
+        var timedOut = false
+        var cancelled = false
         var descriptors = streams.map { pollfd(fd: $0.fd, events: Int16(POLLIN), revents: 0) }
         while process.isRunning {
             // Wake as soon as output arrives instead of sleeping a fixed interval.
             if Darwin.poll(&descriptors, nfds_t(descriptors.count), 10) > 0,
-               descriptors.allSatisfy({ $0.revents & Int16(POLLIN) == 0 }) {
-                usleep(1_000) // Only hang-ups are pending: the child is exiting.
+                descriptors.allSatisfy({ $0.revents & Int16(POLLIN) == 0 })
+            {
+                usleep(1_000)  // Only hang-ups are pending: the child is exiting.
             }
             drain()
-            if cancellation?.isCancelled == true { cancelled = true; break }
-            if Date() >= deadline { timedOut = true; break }
+            if cancellation?.isCancelled == true {
+                cancelled = true
+                break
+            }
+            if Date() >= deadline {
+                timedOut = true
+                break
+            }
         }
         if timedOut || cancelled {
             process.terminate()
@@ -81,20 +99,24 @@ enum GoviLocalProcess {
         }
         process.waitUntilExit()
         drain()
-        return Result(status: process.terminationStatus,
-                      output: String(decoding: streams[0].data, as: UTF8.self),
-                      errors: streams.count > 1 ? String(decoding: streams[1].data, as: UTF8.self) : "",
-                      timedOut: timedOut, cancelled: cancelled)
+        return Result(
+            status: process.terminationStatus,
+            output: String(decoding: streams[0].data, as: UTF8.self),
+            errors: streams.count > 1 ? String(decoding: streams[1].data, as: UTF8.self) : "",
+            timedOut: timedOut, cancelled: cancelled)
     }
 
     /// Runs on a detached task. Cancelling the calling task stops the process.
-    static func runAsync(_ executable: String, _ arguments: [String], timeout: TimeInterval = 4, limit: Int = 262_144,
-                         environment: [String: String]? = nil, directory: String? = nil,
-                         errors: Errors = .discard) async -> Result? {
+    static func runAsync(
+        _ executable: String, _ arguments: [String], timeout: TimeInterval = 4, limit: Int = 262_144,
+        environment: [String: String]? = nil, directory: String? = nil,
+        errors: Errors = .discard
+    ) async -> Result? {
         let cancellation = Cancellation()
         return await withTaskCancellationHandler {
             await Task.detached(priority: .utility) {
-                run(executable, arguments, timeout: timeout, limit: limit, environment: environment,
+                run(
+                    executable, arguments, timeout: timeout, limit: limit, environment: environment,
                     directory: directory, errors: errors, cancellation: cancellation)
             }.value
         } onCancel: {
@@ -142,12 +164,17 @@ enum GoviGit {
     /// Runs git and returns its untrimmed standard output, so porcelain formats
     /// parse exactly. Throws with git's message when the status is not allowed.
     @discardableResult
-    static func output(_ directory: String, _ arguments: [String], allow: Set<Int32> = [0], mergeErrors: Bool = false,
-                       timeout: TimeInterval = localTimeout, limit: Int = 16_777_216,
-                       cancellation: GoviLocalProcess.Cancellation? = nil) throws -> String {
-        guard let result = GoviLocalProcess.run("/usr/bin/git", ["-C", directory] + arguments, timeout: timeout, limit: limit,
-                                                environment: environment, errors: mergeErrors ? .merge : .separate,
-                                                cancellation: cancellation) else {
+    static func output(
+        _ directory: String, _ arguments: [String], allow: Set<Int32> = [0], mergeErrors: Bool = false,
+        timeout: TimeInterval = localTimeout, limit: Int = 16_777_216,
+        cancellation: GoviLocalProcess.Cancellation? = nil
+    ) throws -> String {
+        guard
+            let result = GoviLocalProcess.run(
+                "/usr/bin/git", ["-C", directory] + arguments, timeout: timeout, limit: limit,
+                environment: environment, errors: mergeErrors ? .merge : .separate,
+                cancellation: cancellation)
+        else {
             throw failure(-1, "Govi could not start /usr/bin/git.")
         }
         if result.cancelled { throw CancellationError() }
@@ -202,9 +229,12 @@ enum GoviGitRunner {
     static let emptyTree = GoviGit.emptyTree
 
     @discardableResult
-    static func run(_ directory: String, _ arguments: [String], allow: Set<Int32> = [0], mergeErrors: Bool = false,
-                    timeout: TimeInterval = GoviGit.localTimeout) throws -> String {
-        try GoviGit.output(directory, ["--literal-pathspecs", "-c", "core.quotepath=off"] + arguments,
-                           allow: allow, mergeErrors: mergeErrors, timeout: timeout)
+    static func run(
+        _ directory: String, _ arguments: [String], allow: Set<Int32> = [0], mergeErrors: Bool = false,
+        timeout: TimeInterval = GoviGit.localTimeout
+    ) throws -> String {
+        try GoviGit.output(
+            directory, ["--literal-pathspecs", "-c", "core.quotepath=off"] + arguments,
+            allow: allow, mergeErrors: mergeErrors, timeout: timeout)
     }
 }

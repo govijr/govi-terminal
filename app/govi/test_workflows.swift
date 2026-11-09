@@ -2,11 +2,18 @@ import Foundation
 
 @main struct WorkflowChecks {
     static func main() throws {
-        let first = GoviPaneRecord(id: UUID(), title: "Agent", directory: "/tmp/project with 'quotes'", launch: .init(agent: "claude", task: "Fix login"), persistentName: "first")
-        let second = GoviPaneRecord(id: UUID(), title: "Server", directory: "/tmp/project", launch: .init(command: "npm run dev"), persistentName: "second")
-        let third = GoviPaneRecord(id: UUID(), title: "Browser", directory: "/tmp/project", launch: .init(tool: "browser"), persistentName: "third")
-        let layout = GoviWorkspaceLayout.split(vertical: false, ratio: 0.35, first: .terminal(first), second: .split(vertical: true, ratio: 0.6, first: .terminal(second), second: .terminal(third)))
-        let saved = GoviWorkspaceRecord(id: UUID(), name: "Web", layout: layout, focusedPane: second.id, group: 2, frame: [10, 20, 1200, 800])
+        let first = GoviPaneRecord(
+            id: UUID(), title: "Agent", directory: "/tmp/project with 'quotes'", launch: .init(agent: "claude", task: "Fix login"),
+            persistentName: "first")
+        let second = GoviPaneRecord(
+            id: UUID(), title: "Server", directory: "/tmp/project", launch: .init(command: "npm run dev"), persistentName: "second")
+        let third = GoviPaneRecord(
+            id: UUID(), title: "Browser", directory: "/tmp/project", launch: .init(tool: "browser"), persistentName: "third")
+        let layout = GoviWorkspaceLayout.split(
+            vertical: false, ratio: 0.35, first: .terminal(first),
+            second: .split(vertical: true, ratio: 0.6, first: .terminal(second), second: .terminal(third)))
+        let saved = GoviWorkspaceRecord(
+            id: UUID(), name: "Web", layout: layout, focusedPane: second.id, group: 2, frame: [10, 20, 1200, 800])
         let checkpoint = GoviRecoveryCheckpoint(workspaces: [saved])
         precondition(checkpoint.isValid)
         let data = try JSONEncoder().encode(checkpoint)
@@ -20,9 +27,11 @@ import Foundation
         precondition(instance.panes.map(\.directory) == layout.panes.map(\.directory))
         precondition(!GoviWorkspaceLayout.split(vertical: false, ratio: 2, first: .terminal(first), second: .terminal(second)).isValid)
         precondition(!GoviWorkspaceLayout.split(vertical: false, ratio: 0.5, first: .terminal(first), second: .terminal(first)).isValid)
-        var invalid = first; invalid.directory = "relative/path"
+        var invalid = first
+        invalid.directory = "relative/path"
         precondition(!GoviWorkspaceLayout.terminal(invalid).isValid)
-        var version = checkpoint; version.version = 900
+        var version = checkpoint
+        version.version = 900
         precondition(!version.isValid)
         precondition(!GoviRecoveryCheckpoint(workspaces: [saved, saved]).isValid)
         precondition(GoviShell.quote("a'b;$(touch /tmp/no)") == "'a'\\''b;$(touch /tmp/no)'")
@@ -41,8 +50,9 @@ import Foundation
         let discarded = GoviLocalProcess.run("/bin/sh", ["-c", "printf err >&2"])
         precondition(discarded?.output == "" && discarded?.errors == "")
         let scratchDirectory = String(cString: realpath(FileManager.default.temporaryDirectory.path, nil)!)
-        precondition(GoviLocalProcess.run("/bin/pwd", ["-P"], directory: scratchDirectory)?.output
-            .trimmingCharacters(in: .whitespacesAndNewlines) == scratchDirectory)
+        precondition(
+            GoviLocalProcess.run("/bin/pwd", ["-P"], directory: scratchDirectory)?.output
+                .trimmingCharacters(in: .whitespacesAndNewlines) == scratchDirectory)
         let cancellation = GoviLocalProcess.Cancellation()
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { cancellation.cancel() }
         let cancelStart = Date()
@@ -54,12 +64,15 @@ import Foundation
         try! FileManager.default.createDirectory(atPath: repository, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: repository) }
         try! GoviGit.run(repository, ["init", "-q"])
-        precondition(GoviGit.topLevel(repository).map { String(cString: realpath($0, nil)!) }
-            == String(cString: realpath(repository, nil)!))
+        precondition(
+            GoviGit.topLevel(repository).map { String(cString: realpath($0, nil)!) }
+                == String(cString: realpath(repository, nil)!))
         try! "x".write(toFile: repository + "/é.txt", atomically: true, encoding: .utf8)
         precondition(try! GoviGitRunner.run(repository, ["status", "--porcelain"]) == "?? é.txt\n")
-        do { _ = try GoviGit.run(repository, ["rev-parse", "--verify", "no-such-ref"]); preconditionFailure("expected failure") }
-        catch { precondition((error as NSError).domain == "GoviGit" && !error.localizedDescription.isEmpty) }
+        do {
+            _ = try GoviGit.run(repository, ["rev-parse", "--verify", "no-such-ref"])
+            preconditionFailure("expected failure")
+        } catch { precondition((error as NSError).domain == "GoviGit" && !error.localizedDescription.isEmpty) }
         precondition(GoviGit.topLevel("/") == nil)
         let date = Date(timeIntervalSince1970: 1000)
         var activity = GoviReportedActivity()
@@ -74,7 +87,8 @@ import Foundation
         precondition(activity.startedAt == date && activity.visibleState == .working)
         activity.receive(.done, now: date.addingTimeInterval(10))
         precondition(activity.endedAt == date.addingTimeInterval(10))
-        activity.acknowledge(); activity.receive(.done, now: date.addingTimeInterval(12))
+        activity.acknowledge()
+        activity.receive(.done, now: date.addingTimeInterval(12))
         precondition(activity.visibleState == .idle && activity.endedAt == date.addingTimeInterval(10))
         activity.receive(.working, now: date.addingTimeInterval(20))
         precondition(activity.startedAt == date.addingTimeInterval(20) && activity.endedAt == nil)
@@ -105,6 +119,8 @@ import Foundation
             for key in Array(GoviKeyChord.characters.keys) + ["a", "0", "9"] { all += "keybind = ctrl+alt+\(key)=ignore\n" }
             try all.write(toFile: CommandLine.arguments[1], atomically: true, encoding: .utf8)
         }
-        print("Passed workspace/template round trips, ID isolation, bounds, quoting, helper timeouts, status transitions, duplicate hooks, event validation and shortcut conflicts.")
+        print(
+            "Passed workspace/template round trips, ID isolation, bounds, quoting, helper timeouts, status transitions, duplicate hooks, event validation and shortcut conflicts."
+        )
     }
 }

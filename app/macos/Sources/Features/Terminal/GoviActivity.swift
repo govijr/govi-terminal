@@ -82,13 +82,15 @@ enum GoviActivityPreferences {
     private init() {
         let center = NotificationCenter.default
         for name in [NSApplication.didBecomeActiveNotification, NSWindow.didBecomeKeyNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
-                Task { @MainActor in GoviActivityCenter.shared.acknowledgeVisible() }
-            })
+            observers.append(
+                center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                    Task { @MainActor in GoviActivityCenter.shared.acknowledgeVisible() }
+                })
         }
-        observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in GoviActivityCenter.shared.updateBadge() }
-        })
+        observers.append(
+            center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+                Task { @MainActor in GoviActivityCenter.shared.updateBadge() }
+            })
     }
 
     // MARK: Inputs
@@ -98,7 +100,8 @@ enum GoviActivityPreferences {
         let entry = Entry(surface)
         let id = surface.id
         surface.$title.dropFirst().removeDuplicates().sink { [weak self] _ in
-            entry.titleChanges.append(Date()); self?.evaluate(id)
+            entry.titleChanges.append(Date())
+            self?.evaluate(id)
         }.store(in: &entry.subscriptions)
         surface.$bell.removeDuplicates().sink { [weak self] ringing in
             if ringing { self?.noteAttention(id, notify: true) }
@@ -131,8 +134,13 @@ enum GoviActivityPreferences {
         switch report.state {
         case .set, .indeterminate, .pause:
             entry.progressActive = true
-            if entry.reported == nil { entry.failed = false; entry.finished = false }
-        case .error: entry.progressActive = false; if !isLooking(at: surface) { entry.failed = true }
+            if entry.reported == nil {
+                entry.failed = false
+                entry.finished = false
+            }
+        case .error:
+            entry.progressActive = false
+            if !isLooking(at: surface) { entry.failed = true }
         case .remove: entry.progressActive = false
         }
         entry.progressAt = Date()
@@ -140,7 +148,8 @@ enum GoviActivityPreferences {
     }
 
     func receive(_ signal: GoviActivitySignal) {
-        guard let owner = GoviPaneCoordinator.owner(of: signal.id), let surface = owner.surfaceTree.first(where: { $0.id == signal.id }) else { return }
+        guard let owner = GoviPaneCoordinator.owner(of: signal.id), let surface = owner.surfaceTree.first(where: { $0.id == signal.id })
+        else { return }
         track(surface)
         guard let entry = entries[signal.id] else { return }
         let previous = entry.reported?.visibleState
@@ -148,7 +157,10 @@ enum GoviActivityPreferences {
         report.receive(signal.state)
         if isLooking(at: surface) { report.acknowledge() }
         entry.reported = report
-        if let label = signal.label, !label.isEmpty { entry.label = label; surface.goviLaunch.task = label }
+        if let label = signal.label, !label.isEmpty {
+            entry.label = label
+            surface.goviLaunch.task = label
+        }
         evaluate(signal.id)
         if report.visibleState.wantsAttention && previous != report.visibleState { post(entry, body: report.visibleState.label) }
     }
@@ -173,7 +185,9 @@ enum GoviActivityPreferences {
     func acknowledge(_ id: UUID) {
         guard let entry = entries[id] else { return }
         entry.reported?.acknowledge()
-        entry.attention = false; entry.finished = false; entry.failed = false
+        entry.attention = false
+        entry.finished = false
+        entry.failed = false
         evaluate(id)
     }
 
@@ -190,11 +204,21 @@ enum GoviActivityPreferences {
 
     private func tick() {
         for (id, entry) in entries where entry.surface == nil || GoviPaneCoordinator.owner(of: id) == nil {
-            entries[id] = nil; info[id] = nil
+            entries[id] = nil
+            info[id] = nil
         }
-        for id in entries.keys { evaluate(id); if info[id]?.agent != nil || info[id]?.state.wantsAttention == true { refreshContext(id) } }
-        if Self.badgeCount != attentionCount { Self.badgeCount = attentionCount; updateBadge() }
-        if entries.isEmpty { timer?.invalidate(); timer = nil }
+        for id in entries.keys {
+            evaluate(id)
+            if info[id]?.agent != nil || info[id]?.state.wantsAttention == true { refreshContext(id) }
+        }
+        if Self.badgeCount != attentionCount {
+            Self.badgeCount = attentionCount
+            updateBadge()
+        }
+        if entries.isEmpty {
+            timer?.invalidate()
+            timer = nil
+        }
     }
 
     private func evaluate(_ id: UUID) {
@@ -209,29 +233,31 @@ enum GoviActivityPreferences {
 
         if entry.reported == nil, working {
             if entry.workingSince == nil { entry.workingSince = now }
-            if entry.taskStartedAt == nil || entry.taskEndedAt != nil { entry.taskStartedAt = now; entry.taskEndedAt = nil }
+            if entry.taskStartedAt == nil || entry.taskEndedAt != nil {
+                entry.taskStartedAt = now
+                entry.taskEndedAt = nil
+            }
             entry.finished = false
         } else if entry.reported == nil, let since = entry.workingSince {
             entry.workingSince = nil
             if now.timeIntervalSince(since) >= minimumWork && !isLooking(at: surface) && !entry.attention {
                 entry.finished = true
-                entry.taskEndedAt = now; entry.changedAt = now
+                entry.taskEndedAt = now
+                entry.changedAt = now
                 post(entry, body: entry.failed ? "Stopped with an error." : "Finished.")
             }
         }
 
         let inferred: GoviActivityState =
-            entry.failed ? .error :
-            entry.attention ? .needsInput :
-            working ? .working :
-            entry.finished ? .done : .idle
+            entry.failed ? .error : entry.attention ? .needsInput : working ? .working : entry.finished ? .done : .idle
         let state = entry.reported?.visibleState ?? inferred
         if info[id]?.state != state { entry.changedAt = now }
-        let next = Info(state: state, agent: entry.agent, label: entry.label,
-                        project: entry.project, branch: entry.branch,
-                        startedAt: entry.reported?.startedAt ?? entry.taskStartedAt,
-                        endedAt: entry.reported?.endedAt ?? entry.taskEndedAt,
-                        changedAt: entry.reported?.changedAt ?? entry.changedAt, reported: entry.reported != nil)
+        let next = Info(
+            state: state, agent: entry.agent, label: entry.label,
+            project: entry.project, branch: entry.branch,
+            startedAt: entry.reported?.startedAt ?? entry.taskStartedAt,
+            endedAt: entry.reported?.endedAt ?? entry.taskEndedAt,
+            changedAt: entry.reported?.changedAt ?? entry.changedAt, reported: entry.reported != nil)
         if info[id] != next {
             info[id] = next
             Self.badgeCount = attentionCount
@@ -241,8 +267,10 @@ enum GoviActivityPreferences {
 
     private func refreshContext(_ id: UUID, force: Bool = false) {
         guard let entry = entries[id], let path = entry.surface?.pwd, !entry.contextBusy,
-              force || Date().timeIntervalSince(entry.contextAt) >= 15 else { return }
-        entry.contextBusy = true; entry.contextAt = Date()
+            force || Date().timeIntervalSince(entry.contextAt) >= 15
+        else { return }
+        entry.contextBusy = true
+        entry.contextAt = Date()
         DispatchQueue.global(qos: .utility).async {
             let top = GoviLocalProcess.run("/usr/bin/git", ["-C", path, "rev-parse", "--show-toplevel"], timeout: 2)
             let branch = GoviLocalProcess.run("/usr/bin/git", ["-C", path, "branch", "--show-current"], timeout: 2)
@@ -251,19 +279,30 @@ enum GoviActivityPreferences {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let entry = self.entries[id] else { return }
                 entry.contextBusy = false
-                guard entry.surface?.pwd == path else { entry.contextAt = .distantPast; return }
-                entry.project = URL(fileURLWithPath: root).lastPathComponent; entry.branch = name
+                guard entry.surface?.pwd == path else {
+                    entry.contextAt = .distantPast
+                    return
+                }
+                entry.project = URL(fileURLWithPath: root).lastPathComponent
+                entry.branch = name
                 self.evaluate(id)
             }
         }
     }
 
-    struct QueueItem: Identifiable { let id: UUID; let title: String; let path: String; let info: Info }
+    struct QueueItem: Identifiable {
+        let id: UUID
+        let title: String
+        let path: String
+        let info: Info
+    }
     var queue: [QueueItem] {
         entries.compactMap { id, entry in
             guard let value = info[id], value.state.wantsAttention, let surface = entry.surface,
-                  GoviPaneCoordinator.owner(of: id) != nil else { return nil }
-            return QueueItem(id: id, title: entry.label ?? entry.agent?.name ?? GoviPaneNaming.title(surface), path: surface.pwd ?? "", info: value)
+                GoviPaneCoordinator.owner(of: id) != nil
+            else { return nil }
+            return QueueItem(
+                id: id, title: entry.label ?? entry.agent?.name ?? GoviPaneNaming.title(surface), path: surface.pwd ?? "", info: value)
         }.sorted {
             func rank(_ state: GoviActivityState) -> Int { state == .needsInput ? 0 : state == .error ? 1 : 2 }
             if rank($0.info.state) != rank($1.info.state) { return rank($0.info.state) < rank($1.info.state) }
@@ -271,8 +310,12 @@ enum GoviActivityPreferences {
         }
     }
     func focusNext() {
-        guard let item = queue.first else { NSSound.beep(); return }
-        GoviNavigation.focus(item.id); acknowledge(item.id)
+        guard let item = queue.first else {
+            NSSound.beep()
+            return
+        }
+        GoviNavigation.focus(item.id)
+        acknowledge(item.id)
     }
 
     /// Braille spinner glyphs, as used by Claude Code, Codex and many CLIs.
@@ -369,12 +412,16 @@ struct GoviActivitySettingsView: View {
             Toggle("Show the count on the Dock icon", isOn: $badge)
                 .onChange(of: badge) { _ in GoviActivityCenter.shared.updateBadge() }
             Toggle("Use precise status hooks for Claude Code", isOn: $claudeHooks)
-            Text("Applies to Claude sessions opened from Govi's launcher and templates. Hooks report working, permission requests and completion without reading prompts or changing permission decisions. Existing Claude settings stay in place. Other agents use their terminal progress and notifications.")
-                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
+            Text(
+                "Applies to Claude sessions opened from Govi's launcher and templates. Hooks report working, permission requests and completion without reading prompts or changing permission decisions. Existing Claude settings stay in place. Other agents use their terminal progress and notifications."
+            )
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
             Divider()
             GoviPersistenceSettingsView()
-            Text("Status comes from agent hooks and terminal signals. Govi doesn't read screen contents. Opening a terminal marks its attention item as seen.")
-                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
+            Text(
+                "Status comes from agent hooks and terminal signals. Govi doesn't read screen contents. Opening a terminal marks its attention item as seen."
+            )
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
         }
     }
     private func row(_ state: GoviActivityState, _ text: String) -> some View {
@@ -431,7 +478,9 @@ struct GoviAttentionMenu: View {
 
     private func queueRow(_ item: GoviActivityCenter.QueueItem) -> some View {
         HStack(alignment: .center, spacing: 2) {
-            Button { open(item.id) } label: {
+            Button {
+                open(item.id)
+            } label: {
                 HStack(alignment: .top, spacing: 10) {
                     GoviActivityBadge(state: item.info.state).frame(width: 16).padding(.top, 2)
                     VStack(alignment: .leading, spacing: 4) {
@@ -449,14 +498,18 @@ struct GoviAttentionMenu: View {
                     Spacer(minLength: 0)
                 }.padding(.leading, 10).frame(maxWidth: .infinity, minHeight: 68, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel("Open \(item.title), \(item.info.state.label)")
-            Button { activity.acknowledge(item.id) } label: {
+            Button {
+                activity.acknowledge(item.id)
+            } label: {
                 Image(systemName: "checkmark").font(.system(size: 11)).frame(width: 28, height: 28)
             }.buttonStyle(.plain).foregroundStyle(ui.muted).help("Mark as seen").padding(.trailing, 4)
         }.modifier(GoviHoverHighlight())
     }
     private func context(_ item: GoviActivityCenter.QueueItem) -> String {
-        [item.info.agent?.name, item.info.project.isEmpty ? GoviPaneNaming.shortPath(item.path) : item.info.project,
-         item.info.branch.isEmpty ? nil : item.info.branch].compactMap { $0 }.joined(separator: " · ")
+        [
+            item.info.agent?.name, item.info.project.isEmpty ? GoviPaneNaming.shortPath(item.path) : item.info.project,
+            item.info.branch.isEmpty ? nil : item.info.branch,
+        ].compactMap { $0 }.joined(separator: " · ")
     }
     private static func elapsed(_ start: Date, end: Date) -> String {
         let seconds = max(0, Int(end.timeIntervalSince(start)))
@@ -464,6 +517,9 @@ struct GoviAttentionMenu: View {
     }
     private func open(_ id: UUID) {
         dismiss()
-        DispatchQueue.main.async { GoviNavigation.focus(id); activity.acknowledge(id) }
+        DispatchQueue.main.async {
+            GoviNavigation.focus(id)
+            activity.acknowledge(id)
+        }
     }
 }

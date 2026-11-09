@@ -4,13 +4,18 @@ import AppKit
 /// view instances (and thus the processes they own), even through nested splits.
 final class TestPane: NSView, Codable, Identifiable {
     let id: Int
-    init(_ id: Int) { self.id = id; super.init(frame: .zero) }
+    init(_ id: Int) {
+        self.id = id
+        super.init(frame: .zero)
+    }
     required init?(coder: NSCoder) { fatalError() }
     required init(from decoder: Decoder) throws {
-        id = try decoder.singleValueContainer().decode(Int.self); super.init(frame: .zero)
+        id = try decoder.singleValueContainer().decode(Int.self)
+        super.init(frame: .zero)
     }
     func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer(); try container.encode(id)
+        var container = encoder.singleValueContainer()
+        try container.encode(id)
     }
 }
 
@@ -44,17 +49,22 @@ final class TestPane: NSView, Codable, Identifiable {
             }
         }
         let unknown = TestPane(99)
-        do { _ = try tree.moving(view: unknown, to: panes[0], direction: .left); preconditionFailure("Missing source accepted") }
-        catch Tree.SplitError.viewNotFound { checks += 1 }
-        do { _ = try tree.moving(view: panes[0], to: unknown, direction: .right); preconditionFailure("Missing target accepted") }
-        catch Tree.SplitError.viewNotFound { checks += 1 }
+        do {
+            _ = try tree.moving(view: unknown, to: panes[0], direction: .left)
+            preconditionFailure("Missing source accepted")
+        } catch Tree.SplitError.viewNotFound { checks += 1 }
+        do {
+            _ = try tree.moving(view: panes[0], to: unknown, direction: .right)
+            preconditionFailure("Missing target accepted")
+        } catch Tree.SplitError.viewNotFound { checks += 1 }
         let single = Tree(view: panes[0])
         let unchanged = try single.moving(view: panes[0], to: panes[0], direction: .down)
         precondition(unchanged.structuralIdentity == single.structuralIdentity)
         let bounds = CGSize(width: 1000, height: 800)
         func rect(_ layout: Tree, _ pane: TestPane) -> CGRect {
             layout.root!.spatial(within: bounds).slots.first {
-                if case .leaf(let view) = $0.node { return view === pane }; return false
+                if case .leaf(let view) = $0.node { return view === pane }
+                return false
             }!.bounds
         }
         for source in panes {
@@ -92,23 +102,35 @@ final class TestPane: NSView, Codable, Identifiable {
                 precondition(transferred.first { $0.id == unknown.id } === unknown)
                 for pane in panes { precondition(transferred.first { $0.id == pane.id } === pane) }
                 let destination = rect(tree, target)
-                precondition(rect(transferred, unknown) == zone.rect(in: destination.size).offsetBy(dx: destination.minX, dy: destination.minY))
+                precondition(
+                    rect(transferred, unknown) == zone.rect(in: destination.size).offsetBy(dx: destination.minX, dy: destination.minY))
                 for pane in panes where pane !== target { precondition(rect(transferred, pane) == rect(tree, pane)) }
                 checks += 1
             }
         }
-        do { _ = try tree.docking(view: panes[0], to: unknown, zone: .left); preconditionFailure("Missing docking target accepted") }
-        catch Tree.SplitError.viewNotFound { checks += 1 }
-        do { _ = try tree.docking(view: unknown, to: panes[0], zone: .center); preconditionFailure("External center swap needs the source tree") }
-        catch Tree.SplitError.viewNotFound { checks += 1 }
+        do {
+            _ = try tree.docking(view: panes[0], to: unknown, zone: .left)
+            preconditionFailure("Missing docking target accepted")
+        } catch Tree.SplitError.viewNotFound { checks += 1 }
+        do {
+            _ = try tree.docking(view: unknown, to: panes[0], zone: .center)
+            preconditionFailure("External center swap needs the source tree")
+        } catch Tree.SplitError.viewNotFound { checks += 1 }
 
         // The recording starts with A on the left and B/C/D stacked on the
         // right. Dock C beside A: the left branch splits into A/C while the
         // right branch collapses to B/D. It must not become a workspace half.
-        let example = Tree(root: .split(.init(direction: .horizontal, ratio: 0.5,
-            left: .leaf(view: panes[0]),
-            right: .split(.init(direction: .vertical, ratio: 0.5, left: .leaf(view: panes[1]),
-                right: .split(.init(direction: .vertical, ratio: 0.5, left: .leaf(view: panes[2]), right: .leaf(view: panes[3]))))))), zoomed: nil)
+        let example = Tree(
+            root: .split(
+                .init(
+                    direction: .horizontal, ratio: 0.5,
+                    left: .leaf(view: panes[0]),
+                    right: .split(
+                        .init(
+                            direction: .vertical, ratio: 0.5, left: .leaf(view: panes[1]),
+                            right: .split(
+                                .init(direction: .vertical, ratio: 0.5, left: .leaf(view: panes[2]), right: .leaf(view: panes[3]))))))),
+            zoomed: nil)
         let beside = try example.docking(view: panes[2], to: panes[0], zone: .right)
         precondition(rect(beside, panes[0]) == CGRect(x: 0, y: 0, width: 250, height: 800))
         precondition(rect(beside, panes[2]) == CGRect(x: 250, y: 0, width: 250, height: 800))
@@ -121,9 +143,10 @@ final class TestPane: NSView, Codable, Identifiable {
             (.init(x: 200, y: 10), .top), (.init(x: 200, y: 790), .bottom),
             (.init(x: 500, y: 400), .center), (.init(x: 10, y: 400), .left),
             (.init(x: 990, y: 400), .right), (.init(x: 500, y: 10), .top), (.init(x: 500, y: 790), .bottom),
-            (.init(x: 250, y: 400), .center), (.init(x: 750, y: 400), .center)
+            (.init(x: 250, y: 400), .center), (.init(x: 750, y: 400), .center),
         ] {
-            precondition(GoviSnapZone.at(point, size: bounds) == zone); checks += 1
+            precondition(GoviSnapZone.at(point, size: bounds) == zone)
+            checks += 1
         }
         precondition(GoviSnapZone.at(.zero, size: .zero) == .center)
         let selfDock = try single.docking(view: panes[0], to: panes[0], zone: .left)

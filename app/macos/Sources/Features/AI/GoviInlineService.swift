@@ -19,12 +19,17 @@ import Darwin
     func start() -> String? {
         if let path { return path }
         var template = Array("/tmp/govi-inline-XXXXXX".utf8CString)
-        guard let directory = template.withUnsafeMutableBufferPointer({ buffer in
-            mkdtemp(buffer.baseAddress!).map { String(cString: $0) }
-        }) else { return nil }
+        guard
+            let directory = template.withUnsafeMutableBufferPointer({ buffer in
+                mkdtemp(buffer.baseAddress!).map { String(cString: $0) }
+            })
+        else { return nil }
         let path = directory + "/s"
         let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
-        guard descriptor >= 0 else { try? FileManager.default.removeItem(atPath: directory); return nil }
+        guard descriptor >= 0 else {
+            try? FileManager.default.removeItem(atPath: directory)
+            return nil
+        }
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
@@ -37,7 +42,9 @@ import Darwin
             }
         }
         guard bound == 0, chmod(path, 0o600) == 0, Darwin.listen(descriptor, 64) == 0 else {
-            Darwin.close(descriptor); try? FileManager.default.removeItem(atPath: directory); return nil
+            Darwin.close(descriptor)
+            try? FileManager.default.removeItem(atPath: directory)
+            return nil
         }
         Self.configure(descriptor)
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: io)
@@ -46,19 +53,29 @@ import Darwin
             while true {
                 let peer = Darwin.accept(descriptor, nil, nil)
                 if peer < 0 { return }
-                var uid: uid_t = 0, gid: gid_t = 0
-                guard getpeereid(peer, &uid, &gid) == 0, uid == geteuid() else { Darwin.close(peer); continue }
+                var uid: uid_t = 0
+                var gid: gid_t = 0
+                guard getpeereid(peer, &uid, &gid) == 0, uid == geteuid() else {
+                    Darwin.close(peer)
+                    continue
+                }
                 Self.configure(peer)
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.path != nil, self.clients.count < 64 else { Darwin.close(peer); return }
+                    guard let self, self.path != nil, self.clients.count < 64 else {
+                        Darwin.close(peer)
+                        return
+                    }
                     self.add(peer, queue: io)
                 }
             }
         }
         source.setCancelHandler { Darwin.close(descriptor) }
-        self.directory = directory; self.path = path; listener = source
+        self.directory = directory
+        self.path = path
+        listener = source
         source.resume()
-        preferencesObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+        preferencesObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main)
+        { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let updated = Preferences()
@@ -70,10 +87,15 @@ import Darwin
         return path
     }
     func stop() {
-        path = nil; listener?.cancel(); listener = nil
+        path = nil
+        listener?.cancel()
+        listener = nil
         if let preferencesObserver { NotificationCenter.default.removeObserver(preferencesObserver) }
         preferencesObserver = nil
-        for client in clients.values { client.suggestions?.stop(); client.peer.close() }
+        for client in clients.values {
+            client.suggestions?.stop()
+            client.peer.close()
+        }
         clients.removeAll()
         if let directory { try? FileManager.default.removeItem(atPath: directory) }
         directory = nil
@@ -96,7 +118,10 @@ import Darwin
     private func receive(_ line: String, from id: UUID) {
         guard let client = clients[id] else { return }
         let fields = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-        guard fields.count == 3, let sequence = UInt64(fields[1]) else { client.peer.close(); return }
+        guard fields.count == 3, let sequence = UInt64(fields[1]) else {
+            client.peer.close()
+            return
+        }
         let value = fields[2]
         switch fields[0] {
         case "A":
@@ -104,21 +129,28 @@ import Darwin
             client.peer.close()
         case "P":
             guard let data = value.data(using: .utf8),
-                  let packet = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let text = packet["id"] as? String, let pane = UUID(uuidString: text),
-                  let live = packet["live"] as? Bool, let recovered = packet["recovered"] as? Bool else { client.peer.close(); return }
+                let packet = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let text = packet["id"] as? String, let pane = UUID(uuidString: text),
+                let live = packet["live"] as? Bool, let recovered = packet["recovered"] as? Bool
+            else {
+                client.peer.close()
+                return
+            }
             GoviPersistence.confirm(pane, live: live, recovered: recovered)
             client.peer.close()
         case "Q":
             guard !value.isEmpty, value.count <= 512, GoviCommandText.isSingleLine(value) else { return }
-            client.sequence = String(sequence); client.prefix = value
+            client.sequence = String(sequence)
+            client.prefix = value
             refresh(client)
         case "C":
-            client.sequence = "0"; client.prefix = ""
+            client.sequence = "0"
+            client.prefix = ""
             client.suggestions?.update("\u{0}", saved: [])
         case "H":
             guard !value.hasPrefix(" "), value.count <= 512, GoviCommandText.isSingleLine(value) else { return }
-            recent.removeAll { $0 == value }; recent.append(value)
+            recent.removeAll { $0 == value }
+            recent.append(value)
             if recent.count > 500 { recent.removeFirst(recent.count - 500) }
         default: client.peer.close()
         }
@@ -126,7 +158,8 @@ import Darwin
     private func refresh(_ client: Client) {
         guard !client.prefix.isEmpty else { return }
         if client.suggestions == nil {
-            let suggestions = GoviSuggestions(); client.suggestions = suggestions
+            let suggestions = GoviSuggestions()
+            client.suggestions = suggestions
             client.observer = suggestions.$items.sink { [weak client] items in
                 guard let client, client.sequence != "0", !client.prefix.isEmpty else { return }
                 let candidate = items.first?.command ?? ""
@@ -163,22 +196,30 @@ private final class GoviInlinePeer: @unchecked Sendable {
     private var closed = false
     var onLine: (@MainActor (String) -> Void)?
     var onClose: (@MainActor () -> Void)?
-    init(descriptor: Int32, queue: DispatchQueue) { self.descriptor = descriptor; self.queue = queue }
+    init(descriptor: Int32, queue: DispatchQueue) {
+        self.descriptor = descriptor
+        self.queue = queue
+    }
     func start() {
         queue.async { [self] in
             let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
             source.setEventHandler { [weak self] in self?.readAvailable() }
             let descriptor = self.descriptor
             source.setCancelHandler { Darwin.close(descriptor) }
-            self.source = source; source.resume()
+            self.source = source
+            source.resume()
         }
     }
     func send(_ line: String) {
         let data = Data(line.utf8)
         queue.async { [self] in
             guard !closed else { return }
-            guard outgoing.count + data.count <= 32_768 else { closeOnQueue(); return }
-            outgoing.append(data); flush()
+            guard outgoing.count + data.count <= 32_768 else {
+                closeOnQueue()
+                return
+            }
+            outgoing.append(data)
+            flush()
         }
     }
     func close() { queue.async { [self] in closeOnQueue() } }
@@ -192,11 +233,20 @@ private final class GoviInlinePeer: @unchecked Sendable {
                 if errno != EAGAIN && errno != EWOULDBLOCK { closeOnQueue() }
                 return
             }
-            guard count > 0 else { closeOnQueue(); return }
+            guard count > 0 else {
+                closeOnQueue()
+                return
+            }
             incoming.append(contentsOf: bytes.prefix(count))
-            guard incoming.count <= 16_384 else { closeOnQueue(); return }
+            guard incoming.count <= 16_384 else {
+                closeOnQueue()
+                return
+            }
             while let newline = incoming.firstIndex(of: 10) {
-                guard let line = String(data: incoming[..<newline], encoding: .utf8), line.utf8.count <= 4096 else { closeOnQueue(); return }
+                guard let line = String(data: incoming[..<newline], encoding: .utf8), line.utf8.count <= 4096 else {
+                    closeOnQueue()
+                    return
+                }
                 incoming.removeSubrange(...newline)
                 DispatchQueue.main.async { [weak self] in self?.onLine?(line) }
             }
@@ -212,20 +262,31 @@ private final class GoviInlinePeer: @unchecked Sendable {
                     if writable == nil {
                         let source = DispatchSource.makeWriteSource(fileDescriptor: descriptor, queue: queue)
                         source.setEventHandler { [weak self] in self?.flush() }
-                        writable = source; source.resume()
+                        writable = source
+                        source.resume()
                     }
-                } else { closeOnQueue() }
+                } else {
+                    closeOnQueue()
+                }
                 return
             }
-            guard count > 0 else { closeOnQueue(); return }
+            guard count > 0 else {
+                closeOnQueue()
+                return
+            }
             outgoing.removeFirst(count)
         }
-        writable?.cancel(); writable = nil
+        writable?.cancel()
+        writable = nil
     }
     private func closeOnQueue() {
-        guard !closed else { return }; closed = true
+        guard !closed else { return }
+        closed = true
         _ = Darwin.shutdown(descriptor, SHUT_RDWR)
-        writable?.cancel(); writable = nil; source?.cancel(); source = nil
+        writable?.cancel()
+        writable = nil
+        source?.cancel()
+        source = nil
         DispatchQueue.main.async { [weak self] in self?.onClose?() }
     }
 }

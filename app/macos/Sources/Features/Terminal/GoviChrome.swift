@@ -66,8 +66,9 @@ final class GoviNavigation: ObservableObject {
     /// Bring a session's workspace forward and give it keyboard focus.
     static func focus(_ id: UUID) {
         guard let owner = GoviPaneCoordinator.owner(of: id),
-              let view = owner.surfaceTree.first(where: { $0.id == id }),
-              let window = owner.window else { return }
+            let view = owner.surfaceTree.first(where: { $0.id == id }),
+            let window = owner.window
+        else { return }
         window.tabGroup?.selectedWindow = window
         window.makeKeyAndOrderFront(nil)
         owner.focusedSurface = view
@@ -81,7 +82,11 @@ enum GoviBackdropStyle: String, CaseIterable, Identifiable {
     case none, aurora, image
     var id: String { rawValue }
     var name: String {
-        switch self { case .none: "Quiet"; case .aurora: "Aurora"; case .image: "Image" }
+        switch self {
+        case .none: "Quiet"
+        case .aurora: "Aurora"
+        case .image: "Image"
+        }
     }
 }
 
@@ -188,15 +193,16 @@ struct GoviAurora: View {
     var body: some View {
         ZStack {
             Color(red: 0.03, green: 0.035, blue: 0.05)
-            LinearGradient(stops: [
-                .init(color: .clear, location: 0.18),
-                .init(color: Color(red: 0.10, green: 0.25, blue: 0.48).opacity(0.85), location: 0.34),
-                .init(color: Color(red: 0.36, green: 0.58, blue: 0.80), location: 0.43),
-                .init(color: Color(red: 0.93, green: 0.55, blue: 0.22), location: 0.50),
-                .init(color: Color(red: 0.86, green: 0.20, blue: 0.10), location: 0.56),
-                .init(color: Color(red: 0.25, green: 0.08, blue: 0.06).opacity(0.6), location: 0.64),
-                .init(color: .clear, location: 0.78),
-            ], startPoint: UnitPoint(x: 0, y: 0.05), endPoint: UnitPoint(x: 1, y: 0.95))
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.18),
+                    .init(color: Color(red: 0.10, green: 0.25, blue: 0.48).opacity(0.85), location: 0.34),
+                    .init(color: Color(red: 0.36, green: 0.58, blue: 0.80), location: 0.43),
+                    .init(color: Color(red: 0.93, green: 0.55, blue: 0.22), location: 0.50),
+                    .init(color: Color(red: 0.86, green: 0.20, blue: 0.10), location: 0.56),
+                    .init(color: Color(red: 0.25, green: 0.08, blue: 0.06).opacity(0.6), location: 0.64),
+                    .init(color: .clear, location: 0.78),
+                ], startPoint: UnitPoint(x: 0, y: 0.05), endPoint: UnitPoint(x: 1, y: 0.95))
             Rectangle().fill(ImagePaint(image: Image(nsImage: Self.dots), scale: 1))
         }
     }
@@ -222,9 +228,12 @@ struct GoviGlassPanel: ViewModifier {
     var tint = 0.55
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
     private var rim: some View {
-        shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.35), .white.opacity(0.06), .white.opacity(0.14)],
-                                          startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-            .allowsHitTesting(false)
+        shape.strokeBorder(
+            LinearGradient(
+                colors: [.white.opacity(0.35), .white.opacity(0.06), .white.opacity(0.14)],
+                startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1
+        )
+        .allowsHitTesting(false)
     }
     @ViewBuilder func body(content: Content) -> some View {
         if reduceTransparency || contrast == .increased {
@@ -267,7 +276,9 @@ struct GoviMenuRow<Icon: View, Trailing: View>: View {
 }
 extension GoviMenuRow where Trailing == Text {
     init(title: String, trailing: String, disabled: Bool = false, @ViewBuilder icon: @escaping () -> Icon, action: @escaping () -> Void) {
-        self.init(title: title, disabled: disabled, icon: icon, trailing: { Text(trailing).font(GoviInk.font(11)).foregroundColor(.secondary) }, action: action)
+        self.init(
+            title: title, disabled: disabled, icon: icon, trailing: { Text(trailing).font(GoviInk.font(11)).foregroundColor(.secondary) },
+            action: action)
     }
 }
 extension GoviMenuRow where Trailing == EmptyView {
@@ -316,13 +327,17 @@ struct GoviBackdropSettingsView: View {
             }.padding(12).background(ui.canvas, in: RoundedRectangle(cornerRadius: 9))
             HStack(spacing: 14) {
                 ForEach(GoviBackdropStyle.allCases) { option in
-                    Button { select(option) } label: {
+                    Button {
+                        select(option)
+                    } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             preview(option)
                                 .frame(height: 92).frame(maxWidth: .infinity)
                                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .stroke(style == option.rawValue ? ui.accent : ui.line, lineWidth: style == option.rawValue ? 2 : 1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .stroke(style == option.rawValue ? ui.accent : ui.line, lineWidth: style == option.rawValue ? 2 : 1)
+                                )
                             HStack {
                                 Text(option.name)
                                 Spacer()
@@ -347,8 +362,10 @@ struct GoviBackdropSettingsView: View {
             Divider()
             slider("Blur", value: $blur, range: 0...40, label: "\(Int(blur)) pt")
             slider("Tint", value: $dim, range: 0...0.95, label: "\(Int(dim * 100))%")
-            Text("The background fills the whole window, terminal included. Tint washes it with the terminal theme's background color; raise it if text is hard to read. Cells with their own colors stay solid.")
-                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+            Text(
+                "The background fills the whole window, terminal included. Tint washes it with the terminal theme's background color; raise it if text is hard to read. Cells with their own colors stay solid."
+            )
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -365,7 +382,9 @@ struct GoviBackdropSettingsView: View {
         }
     }
 
-    private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, label: String, commit: @escaping () -> Void = {}) -> some View {
+    private func slider(
+        _ title: String, value: Binding<Double>, range: ClosedRange<Double>, label: String, commit: @escaping () -> Void = {}
+    ) -> some View {
         HStack(spacing: 14) {
             Text(title).frame(width: 120, alignment: .leading)
             Slider(value: value, in: range, onEditingChanged: { editing in if !editing { commit() } })
@@ -374,7 +393,10 @@ struct GoviBackdropSettingsView: View {
     }
 
     private func select(_ option: GoviBackdropStyle) {
-        if option == .image && GoviBackdropStore.image(at: imagePath) == nil { chooseImage(); return }
+        if option == .image && GoviBackdropStore.image(at: imagePath) == nil {
+            chooseImage()
+            return
+        }
         style = option.rawValue
         ghostty.reloadConfig()
     }
@@ -389,7 +411,10 @@ struct GoviBackdropSettingsView: View {
         do {
             let previous = imagePath
             let path = try GoviBackdropStore.importImage(from: url)
-            guard GoviBackdropStore.image(at: path) != nil else { failure = "That file could not be read as an image."; return }
+            guard GoviBackdropStore.image(at: path) != nil else {
+                failure = "That file could not be read as an image."
+                return
+            }
             if !previous.isEmpty, previous != path { try? FileManager.default.removeItem(atPath: previous) }
             failure = nil
             imagePath = path

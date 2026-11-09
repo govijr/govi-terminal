@@ -10,7 +10,8 @@ import Darwin
 // See Govi/Licenses/CodeNotch-LICENSE.txt and Brand/SOURCES.md.
 extension GoviGit {
     static func defaultBranch(for agent: GoviAgent) -> String {
-        let formatter = DateFormatter(); formatter.dateFormat = "MMdd-HHmm"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMdd-HHmm"
         return "\(agent.rawValue)/\(formatter.string(from: Date()))"
     }
 }
@@ -19,26 +20,38 @@ enum GoviAgent: String, CaseIterable, Identifiable {
     case claude, pi, cursor, grok, codex, opencode
     var id: String { rawValue }
     var name: String {
-        switch self { case .claude: "Claude Code"; case .pi: "Pi"; case .cursor: "Cursor"; case .grok: "Grok"; case .codex: "Codex"; case .opencode: "OpenCode" }
+        switch self {
+        case .claude: "Claude Code"
+        case .pi: "Pi"
+        case .cursor: "Cursor"
+        case .grok: "Grok"
+        case .codex: "Codex"
+        case .opencode: "OpenCode"
+        }
     }
     var commands: [String] { self == .cursor ? ["cursor-agent", "agent"] : [rawValue] }
     /// Interactive session pickers; never choose an arbitrary last conversation.
     var resumeArguments: [String]? {
-        switch self { case .claude: ["--resume"]; case .codex: ["resume"]; default: nil }
+        switch self {
+        case .claude: ["--resume"]
+        case .codex: ["resume"]
+        default: nil
+        }
     }
     var launchArguments: [String] {
         self == .claude && UserDefaults.standard.object(forKey: "GoviClaudeStatusHooks") as? Bool != false
             ? ["--settings", GoviClaudeHooks.settingsJSON] : []
     }
     var installationURL: URL {
-        let address = switch self {
-        case .claude: "https://code.claude.com/docs/en/setup"
-        case .codex: "https://developers.openai.com/codex/cli/"
-        case .cursor: "https://cursor.com/docs/cli/installation"
-        case .grok: "https://github.com/xai-org/grok-build"
-        case .pi: "https://github.com/earendil-works/pi"
-        case .opencode: "https://opencode.ai/docs/"
-        }
+        let address =
+            switch self {
+            case .claude: "https://code.claude.com/docs/en/setup"
+            case .codex: "https://developers.openai.com/codex/cli/"
+            case .cursor: "https://cursor.com/docs/cli/installation"
+            case .grok: "https://github.com/xai-org/grok-build"
+            case .pi: "https://github.com/earendil-works/pi"
+            case .opencode: "https://opencode.ai/docs/"
+            }
         return URL(string: address)!
     }
     static func quote(_ text: String) -> String { "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'" }
@@ -51,7 +64,12 @@ enum GoviTool: String, CaseIterable, Identifiable {
     case code, browser, phone, mac
     var id: String { rawValue }
     var name: String {
-        switch self { case .code: "Code Editor"; case .browser: "Browser"; case .phone: "iPhone Simulator"; case .mac: "Virtual Mac" }
+        switch self {
+        case .code: "Code Editor"
+        case .browser: "Browser"
+        case .phone: "iPhone Simulator"
+        case .mac: "Virtual Mac"
+        }
     }
     var summary: String {
         switch self {
@@ -84,16 +102,20 @@ enum GoviTool: String, CaseIterable, Identifiable {
     @Published var installed: [GoviAgent: String] = [:]
     @Published var checking = false
     func locate(_ agent: GoviAgent) {
-        let panel = NSOpenPanel(); panel.title = "Locate \(agent.name)"
+        let panel = NSOpenPanel()
+        panel.title = "Locate \(agent.name)"
         panel.message = "Choose the installed command-line executable (\(agent.commands.joined(separator: " or ")))."
-        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url, FileManager.default.isExecutableFile(atPath: url.path) else { return }
         var custom = UserDefaults.standard.dictionary(forKey: "GoviAgentExecutables") as? [String: String] ?? [:]
-        custom[agent.rawValue] = url.path; UserDefaults.standard.set(custom, forKey: "GoviAgentExecutables")
+        custom[agent.rawValue] = url.path
+        UserDefaults.standard.set(custom, forKey: "GoviAgentExecutables")
         refresh()
     }
     func refresh() {
-        guard !checking else { return }; checking = true
+        guard !checking else { return }
+        checking = true
         Task {
             let found = await Task.detached(priority: .utility) { () -> [GoviAgent: String] in
                 let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -107,30 +129,48 @@ enum GoviTool: String, CaseIterable, Identifiable {
                 if let result = GoviLocalProcess.run(shell, ["-ilc", script], timeout: 4), !result.timedOut {
                     for line in result.output.split(separator: "\n") {
                         let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
-                        if parts.count == 2, parts[1].hasPrefix("/"), FileManager.default.isExecutableFile(atPath: parts[1]) { paths[parts[0]] = parts[1] }
+                        if parts.count == 2, parts[1].hasPrefix("/"), FileManager.default.isExecutableFile(atPath: parts[1]) {
+                            paths[parts[0]] = parts[1]
+                        }
                     }
                 }
-                let directories = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init) +
-                    [home + "/.local/bin", home + "/.bun/bin", home + "/.npm-global/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+                let directories =
+                    (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init) + [
+                        home + "/.local/bin", home + "/.bun/bin", home + "/.npm-global/bin", "/opt/homebrew/bin", "/usr/local/bin",
+                        "/usr/bin",
+                    ]
                 var result: [GoviAgent: String] = [:]
                 let custom = UserDefaults.standard.dictionary(forKey: "GoviAgentExecutables") as? [String: String] ?? [:]
                 for agent in GoviAgent.allCases {
-                    if let path = custom[agent.rawValue], FileManager.default.isExecutableFile(atPath: path) { result[agent] = path; continue }
+                    if let path = custom[agent.rawValue], FileManager.default.isExecutableFile(atPath: path) {
+                        result[agent] = path
+                        continue
+                    }
                     for name in agent.commands {
-                        if let path = paths[name] { result[agent] = path; break }
-                        if let path = directories.map({ $0 + "/" + name }).first(where: { FileManager.default.isExecutableFile(atPath: $0) }) { result[agent] = path; break }
+                        if let path = paths[name] {
+                            result[agent] = path
+                            break
+                        }
+                        if let path = directories.map({ $0 + "/" + name }).first(where: { FileManager.default.isExecutableFile(atPath: $0) }
+                        ) {
+                            result[agent] = path
+                            break
+                        }
                     }
                 }
                 return result
             }.value
-            installed = found; checking = false
+            installed = found
+            checking = false
         }
     }
 }
 
 struct GoviAgentGlyph: View {
     let agent: GoviAgent
-    var body: some View { Image("Agent-" + agent.rawValue).resizable().scaledToFit().frame(width: 16, height: 16).accessibilityHidden(true) }
+    var body: some View {
+        Image("Agent-" + agent.rawValue).resizable().scaledToFit().frame(width: 16, height: 16).accessibilityHidden(true)
+    }
 }
 struct GoviWordmark: View {
     @Environment(\.goviPalette) private var ui
@@ -164,10 +204,12 @@ struct GoviAgentMenu: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             GoviMenuRow(title: "New workspace", trailing: shortcuts.chord(.newWorkspace).display, icon: { Image(systemName: "terminal") }) {
-                dismiss(); launch(.init())
+                dismiss()
+                launch(.init())
             }
             GoviMenuRow(title: "Project templates…", icon: { Image(systemName: "rectangle.3.group") }) {
-                dismiss(); NotificationCenter.default.post(name: .goviTemplates, object: nil)
+                dismiss()
+                NotificationCenter.default.post(name: .goviTemplates, object: nil)
             }
             GoviMenuDivider()
             GoviMenuHeader(title: "Start an agent")
@@ -176,11 +218,18 @@ struct GoviAgentMenu: View {
             worktreeOptions
             ForEach(GoviAgent.allCases) { agent in
                 let installed = catalog.installed[agent] != nil
-                GoviMenuRow(title: agent.name, disabled: catalog.checking || creating != nil, icon: { GoviAgentGlyph(agent: agent) }, trailing: {
-                    if creating == agent { ProgressView().controlSize(.mini) }
-                    else if !installed { Text(catalog.checking ? "Checking…" : "Set up…").font(GoviInk.font(10.5)).foregroundStyle(ui.muted) }
-                    else if worktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(ui.muted) }
-                }) { if installed { start(agent) } else { setupAgent = agent } }
+                GoviMenuRow(
+                    title: agent.name, disabled: catalog.checking || creating != nil, icon: { GoviAgentGlyph(agent: agent) },
+                    trailing: {
+                        if creating == agent {
+                            ProgressView().controlSize(.mini)
+                        } else if !installed {
+                            Text(catalog.checking ? "Checking…" : "Set up…").font(GoviInk.font(10.5)).foregroundStyle(ui.muted)
+                        } else if worktree {
+                            Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(ui.muted)
+                        }
+                    }
+                ) { if installed { start(agent) } else { setupAgent = agent } }
             }
             if let failure {
                 Text(failure).font(GoviInk.font(10.5)).foregroundStyle(.red).textSelection(.enabled)
@@ -189,27 +238,40 @@ struct GoviAgentMenu: View {
             GoviMenuDivider()
             GoviMenuHeader(title: "Connect to a remote host")
             ForEach(remote.quickTargets, id: \.self) { target in
-                GoviMenuRow(title: target.name, icon: {
-                    Image(systemName: target.transport == .tailscale ? "point.3.connected.trianglepath.dotted" : "network")
-                }, trailing: {
-                    if let device = remote.device(for: target) {
-                        Circle().fill(device.online ? Color.green : ui.muted.opacity(0.6)).frame(width: 6, height: 6)
-                            .help(device.online ? "Online" : "Offline")
+                GoviMenuRow(
+                    title: target.name,
+                    icon: {
+                        Image(systemName: target.transport == .tailscale ? "point.3.connected.trianglepath.dotted" : "network")
+                    },
+                    trailing: {
+                        if let device = remote.device(for: target) {
+                            Circle().fill(device.online ? Color.green : ui.muted.opacity(0.6)).frame(width: 6, height: 6)
+                                .help(device.online ? "Online" : "Offline")
+                        }
                     }
-                }) { dismiss(); connect(target) }
+                ) {
+                    dismiss()
+                    connect(target)
+                }
             }
-            GoviMenuRow(title: "Remote hosts…", trailing: shortcuts.chord(.remoteHosts).display, icon: { Image(systemName: "server.rack") }) {
-                dismiss(); NotificationCenter.default.post(name: .goviRemoteHosts, object: nil)
+            GoviMenuRow(title: "Remote hosts…", trailing: shortcuts.chord(.remoteHosts).display, icon: { Image(systemName: "server.rack") })
+            {
+                dismiss()
+                NotificationCenter.default.post(name: .goviRemoteHosts, object: nil)
             }
             GoviMenuDivider()
             GoviMenuRow(title: "Add project…", icon: { Image(systemName: "folder.badge.plus") }) {
-                dismiss(); addProject()
+                dismiss()
+                addProject()
             }
         }
         .font(GoviInk.font(13)).foregroundStyle(ui.ink)
         .padding(6).frame(width: 290)
         .modifier(GoviGlassPanel())
-        .onAppear { catalog.refresh(); checkRepository() }
+        .onAppear {
+            catalog.refresh()
+            checkRepository()
+        }
         .sheet(item: $setupAgent) { agent in GoviAgentSetupView(agent: agent) }
     }
     @ViewBuilder private var worktreeOptions: some View {
@@ -217,8 +279,11 @@ struct GoviAgentMenu: View {
             Toggle(isOn: $useWorktree) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("In a new worktree").font(GoviInk.font(12))
-                    Text(repository.map { "Branches from \(URL(fileURLWithPath: $0).lastPathComponent)" } ?? "Open a Git project to use worktrees")
-                        .font(GoviInk.font(10)).foregroundStyle(ui.muted).lineLimit(1)
+                    Text(
+                        repository.map { "Branches from \(URL(fileURLWithPath: $0).lastPathComponent)" }
+                            ?? "Open a Git project to use worktrees"
+                    )
+                    .font(GoviInk.font(10)).foregroundStyle(ui.muted).lineLimit(1)
                 }
             }.toggleStyle(.switch).controlSize(.mini).disabled(repository == nil)
             if worktree {
@@ -240,11 +305,17 @@ struct GoviAgentMenu: View {
         guard let path = catalog.installed[agent] else { return }
         failure = nil
         guard worktree, let top = repository else {
-            dismiss(); launch(.init(executable: path, agent: agent, label: taskLabel.isEmpty ? nil : taskLabel)); return
+            dismiss()
+            launch(.init(executable: path, agent: agent, label: taskLabel.isEmpty ? nil : taskLabel))
+            return
         }
-        let name = branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let name =
+            branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? GoviGit.defaultBranch(for: agent) : branch.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.hasPrefix("-"), !name.contains(where: { $0.isWhitespace }) else { failure = "Branch names can't start with “-” or contain spaces."; return }
+        guard !name.hasPrefix("-"), !name.contains(where: { $0.isWhitespace }) else {
+            failure = "Branch names can't start with “-” or contain spaces."
+            return
+        }
         creating = agent
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try GoviGit.createWorktree(repository: top, branch: name) }
@@ -252,7 +323,8 @@ struct GoviAgentMenu: View {
                 creating = nil
                 switch result {
                 case .success(let folder):
-                    branch = ""; dismiss()
+                    branch = ""
+                    dismiss()
                     launch(.init(executable: path, agent: agent, directory: folder, label: taskLabel.isEmpty ? name : taskLabel))
                 case .failure(let error):
                     failure = error.localizedDescription
@@ -269,21 +341,30 @@ struct GoviAgentSetupView: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { GoviAgentGlyph(agent: agent); Text(agent.name).font(GoviInk.font(20).weight(.medium)); Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
+            HStack {
+                GoviAgentGlyph(agent: agent)
+                Text(agent.name).font(GoviInk.font(20).weight(.medium))
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
             if let path = catalog.installed[agent] {
                 Label("Ready to launch", systemImage: "checkmark.circle").foregroundStyle(.green)
                 Text(path).font(GoviInk.font(11)).foregroundStyle(ui.muted).textSelection(.enabled)
             } else {
-                Text("Govi could not find this agent's command-line tool. Install it using the provider's guide, or locate an existing installation.")
-                    .foregroundStyle(ui.muted).lineSpacing(5)
+                Text(
+                    "Govi could not find this agent's command-line tool. Install it using the provider's guide, or locate an existing installation."
+                )
+                .foregroundStyle(ui.muted).lineSpacing(5)
             }
             HStack {
                 Button("Installation Guide") { NSWorkspace.shared.open(agent.installationURL) }
                 Button("Locate Executable…") { catalog.locate(agent) }
                 Button(catalog.checking ? "Checking…" : "Check Again") { catalog.refresh() }.disabled(catalog.checking)
             }
-            Text("An account or usage meter can be available even when the command-line tool is missing. Installing the tool and signing in happen through the provider.")
-                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
+            Text(
+                "An account or usage meter can be available even when the command-line tool is missing. Installing the tool and signing in happen through the provider."
+            )
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
         }.padding(26).frame(width: 570).font(GoviInk.font(12)).foregroundStyle(ui.ink).background(ui.paper).modifier(GoviChromeAppearance())
     }
 }
@@ -346,15 +427,22 @@ enum GoviUsageParser {
             stamp = String(stamp[..<open]).trimmingCharacters(in: .whitespaces)
         }
         stamp = stamp.replacingOccurrences(of: "am", with: "AM").replacingOccurrences(of: "pm", with: "PM")
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = zone
-        guard let parsed = ["MMM d 'at' h:mma", "MMM d 'at' ha"].lazy.compactMap({ format -> Date? in
-            formatter.dateFormat = format; return formatter.date(from: stamp)
-        }).first else { return nil }
-        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = zone
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = zone
+        guard
+            let parsed = ["MMM d 'at' h:mma", "MMM d 'at' ha"].lazy.compactMap({ format -> Date? in
+                formatter.dateFormat = format
+                return formatter.date(from: stamp)
+            }).first
+        else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
         var parts = calendar.dateComponents([.month, .day, .hour, .minute], from: parsed)
         let year = calendar.component(.year, from: now)
         return [year - 1, year, year + 1].compactMap { year -> Date? in
-            parts.year = year; return calendar.date(from: parts)
+            parts.year = year
+            return calendar.date(from: parts)
         }.min { abs($0.timeIntervalSince(now)) < abs($1.timeIntervalSince(now)) }
     }
     static func parse(_ agent: GoviAgent, _ root: [String: Any], now: Date = Date()) -> [GoviUsageWindow] {
@@ -364,7 +452,10 @@ enum GoviUsageParser {
         }
         switch agent {
         case .claude:
-            for (key, label) in [("five_hour", "5-hour limit"), ("seven_day", "Weekly limit"), ("seven_day_sonnet", "Sonnet weekly"), ("seven_day_opus", "Opus weekly")] {
+            for (key, label) in [
+                ("five_hour", "5-hour limit"), ("seven_day", "Weekly limit"), ("seven_day_sonnet", "Sonnet weekly"),
+                ("seven_day_opus", "Opus weekly"),
+            ] {
                 if let window = root[key] as? [String: Any] { add(label, window["utilization"], window["resets_at"]) }
             }
         case .codex:
@@ -373,7 +464,8 @@ enum GoviUsageParser {
                     guard let window = limit[key] as? [String: Any] else { continue }
                     let seconds = number(window["limit_window_seconds"]).flatMap { $0 <= 315360000 ? $0 : nil }
                     let role = key == "primary_window" ? "Primary" : "Secondary"
-                    let label = seconds.map { role + " · " + ($0 >= 604800 ? "Weekly limit" : "\(Int($0 / 3600))-hour limit") } ?? role + " limit"
+                    let label =
+                        seconds.map { role + " · " + ($0 >= 604800 ? "Weekly limit" : "\(Int($0 / 3600))-hour limit") } ?? role + " limit"
                     let relativeReset = number(window["reset_after_seconds"]).map { now.timeIntervalSince1970 + $0 }
                     let reset: Any? = window["reset_at"] ?? relativeReset as Any?
                     add(prefix + label, window["used_percent"], reset)
@@ -381,20 +473,27 @@ enum GoviUsageParser {
             }
             if let limit = root["rate_limit"] as? [String: Any] { windows(limit) }
             if let spend = root["spend_control"] as? [String: Any], let limit = spend["individual_limit"] as? [String: Any] {
-                if let percent = number(limit["used_percent"]) { add("Workspace credits", percent, limit["reset_at"]) }
-                else if let used = number(limit["used"]), let total = number(limit["limit"]), total > 0 { add("Workspace credits", used / total * 100, limit["reset_at"]) }
+                if let percent = number(limit["used_percent"]) {
+                    add("Workspace credits", percent, limit["reset_at"])
+                } else if let used = number(limit["used"]), let total = number(limit["limit"]), total > 0 {
+                    add("Workspace credits", used / total * 100, limit["reset_at"])
+                }
             }
             for extra in root["additional_rate_limits"] as? [[String: Any]] ?? [] {
-                if let limit = extra["rate_limit"] as? [String: Any] { windows(limit, prefix: (extra["limit_name"] as? String ?? "Additional") + " · ") }
+                if let limit = extra["rate_limit"] as? [String: Any] {
+                    windows(limit, prefix: (extra["limit_name"] as? String ?? "Additional") + " · ")
+                }
             }
         case .cursor:
             let usage = root["individualUsage"] as? [String: Any] ?? [:]
             let plan = usage["plan"] as? [String: Any] ?? [:]
             let reset = root["billingCycleEnd"]
-            add("Auto usage", plan["autoPercentUsed"], reset); add("API usage", plan["apiPercentUsed"], reset)
+            add("Auto usage", plan["autoPercentUsed"], reset)
+            add("API usage", plan["apiPercentUsed"], reset)
             for key in ["overall", "onDemand"] {
                 if let value = usage[key] as? [String: Any], value["enabled"] as? Bool != false,
-                   let used = number(value["used"]), let limit = number(value["limit"]), limit > 0 {
+                    let used = number(value["used"]), let limit = number(value["limit"]), limit > 0
+                {
                     add(key == "overall" ? "Included usage" : "On demand", used / limit * 100, reset)
                 }
             }
@@ -423,34 +522,46 @@ enum GoviUsageParser {
 
 private enum GoviUsageFailure: Error { case signIn, unauthorized, expired, keychain, response(Int), empty, rateLimited(TimeInterval) }
 private final class GoviUsageRedirectGuard: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void
+    ) { completionHandler(nil) }
 }
 private enum GoviUsageSource {
     static let home = FileManager.default.homeDirectoryForCurrentUser
     static func json(_ data: Data) -> [String: Any]? { (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] }
     static func file(_ url: URL) -> [String: Any]? { (try? Data(contentsOf: url)).flatMap(json) }
     static func token(_ value: Any?) throws -> String {
-        guard let s = value as? String, !s.isEmpty, !s.contains("\n"), !s.contains("\r") else { throw GoviUsageFailure.signIn }; return s
+        guard let s = value as? String, !s.isEmpty, !s.contains("\n"), !s.contains("\r") else { throw GoviUsageFailure.signIn }
+        return s
     }
     static func keychain(_ service: String, account: String? = nil, interactive: Bool) throws -> Data {
-        var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                  kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+            kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
         if let account { query[kSecAttrAccount as String] = account }
         if !interactive {
-            let context = LAContext(); context.interactionNotAllowed = true
+            let context = LAContext()
+            context.interactionNotAllowed = true
             query[kSecUseAuthenticationContext as String] = context
         }
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecInteractionNotAllowed || status == errSecAuthFailed || status == errSecUserCanceled { throw GoviUsageFailure.keychain }
+        if status == errSecInteractionNotAllowed || status == errSecAuthFailed || status == errSecUserCanceled {
+            throw GoviUsageFailure.keychain
+        }
         guard status == errSecSuccess, let data = result as? Data else { throw GoviUsageFailure.signIn }
         return data
     }
     static func rows(_ url: URL, sql: String, columns: Int) -> [[String]] {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else { if db != nil { sqlite3_close(db) }; return [] }
-        defer { sqlite3_close(db) }; sqlite3_busy_timeout(db, 300)
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
+            if db != nil { sqlite3_close(db) }
+            return []
+        }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 300)
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
@@ -463,15 +574,22 @@ private enum GoviUsageSource {
     /// Ask the installed CLI for its built-in /usage report. It renews its own
     /// sign-in; Govi never refreshes or writes another app's OAuth credentials.
     static func claudeCLI(binary: URL? = nil, directory: URL? = nil) throws -> [GoviUsageWindow]? {
-        let paths = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { String($0) + "/claude" } +
-            [home.appendingPathComponent(".local/bin/claude").path, "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
-        guard let executable = binary ?? paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }).map({ URL(fileURLWithPath: $0) }) else { return nil }
+        let paths =
+            (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { String($0) + "/claude" } + [
+                home.appendingPathComponent(".local/bin/claude").path, "/opt/homebrew/bin/claude", "/usr/local/bin/claude",
+            ]
+        guard
+            let executable = binary
+                ?? paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }).map({ URL(fileURLWithPath: $0) })
+        else { return nil }
         let scratch = directory ?? FileManager.default.temporaryDirectory.appendingPathComponent("govi-claude-usage", isDirectory: true)
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         // The -- separator keeps /usage out of the variadic --tools argument.
         // No project settings, hooks, MCP servers, tools, or saved conversation.
-        let arguments = ["--print", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
-                         "--settings", #"{"disableAllHooks":true}"#, "--tools", "", "--", "/usage"]
+        let arguments = [
+            "--print", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
+            "--settings", #"{"disableAllHooks":true}"#, "--tools", "", "--", "/usage",
+        ]
         guard let result = GoviLocalProcess.run(executable.path, arguments, timeout: 20, directory: scratch.path) else { return nil }
         let text = result.output
         let windows = GoviUsageParser.claudeCLI(text)
@@ -480,10 +598,13 @@ private enum GoviUsageSource {
         return nil
     }
     static func request(_ agent: GoviAgent, interactive: Bool) throws -> URLRequest {
-        var endpoint = "", headers: [String: String] = [:]
+        var endpoint = ""
+        var headers: [String: String] = [:]
         switch agent {
         case .claude:
-            let folder = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".claude")
+            let folder =
+                ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
+                ?? home.appendingPathComponent(".claude")
             var data = file(folder.appendingPathComponent(".credentials.json"))
             if data == nil {
                 let suffix = SHA256.hash(data: Data(folder.path.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8)
@@ -492,8 +613,7 @@ private enum GoviUsageSource {
                 // Read through the Keychain API only, so macOS asks the user before
                 // Govi can see another app's sign-in. Background refreshes never
                 // prompt; they surface "Click to connect" instead.
-                do { data = json(try keychain(services[0], interactive: interactive)) }
-                catch GoviUsageFailure.signIn {
+                do { data = json(try keychain(services[0], interactive: interactive)) } catch GoviUsageFailure.signIn {
                     guard isDefault else { throw GoviUsageFailure.signIn }
                     data = json(try keychain("Claude Code-credentials", interactive: interactive))
                 }
@@ -501,21 +621,32 @@ private enum GoviUsageSource {
             let stored = data ?? [:]
             let oauth = stored["claudeAiOauth"] as? [String: Any] ?? [:]
             // Claude Code refreshes its own token; an expired one only earns 401/429s.
-            if let expires = GoviUsageParser.number(oauth["expiresAt"]), expires / 1000 < Date().timeIntervalSince1970 { throw GoviUsageFailure.expired }
+            if let expires = GoviUsageParser.number(oauth["expiresAt"]), expires / 1000 < Date().timeIntervalSince1970 {
+                throw GoviUsageFailure.expired
+            }
             endpoint = "https://api.anthropic.com/api/oauth/usage"
             headers = ["Authorization": "Bearer " + (try token(oauth["accessToken"])), "anthropic-beta": "oauth-2025-04-20"]
         case .codex:
-            let folder = ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".codex")
+            let folder =
+                ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".codex")
             let root = file(folder.appendingPathComponent("auth.json")) ?? [:]
             let tokens = root["tokens"] as? [String: Any] ?? [:]
             endpoint = "https://chatgpt.com/backend-api/wham/usage"
-            headers = ["Authorization": "Bearer " + (try token(tokens["access_token"])), "ChatGPT-Account-Id": try token(tokens["account_id"])]
+            headers = [
+                "Authorization": "Bearer " + (try token(tokens["access_token"])), "ChatGPT-Account-Id": try token(tokens["account_id"]),
+            ]
         case .cursor:
-            let values = rows(home.appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb"), sql: "SELECT key, value FROM ItemTable WHERE key IN ('cursorAuth/accessToken','cursorAuth/stripeMembershipAuthId')", columns: 2)
-            var credentials: [String: String] = [:]; for row in values { credentials[row[0]] = row[1] }
-            var access = credentials["cursorAuth/accessToken"], account = credentials["cursorAuth/stripeMembershipAuthId"]
+            let values = rows(
+                home.appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb"),
+                sql: "SELECT key, value FROM ItemTable WHERE key IN ('cursorAuth/accessToken','cursorAuth/stripeMembershipAuthId')",
+                columns: 2)
+            var credentials: [String: String] = [:]
+            for row in values { credentials[row[0]] = row[1] }
+            var access = credentials["cursorAuth/accessToken"]
+            var account = credentials["cursorAuth/stripeMembershipAuthId"]
             if access == nil || account == nil {
-                access = String(data: try keychain("cursor-access-token", account: "cursor-user", interactive: interactive), encoding: .utf8)
+                access = String(
+                    data: try keychain("cursor-access-token", account: "cursor-user", interactive: interactive), encoding: .utf8)
                 let info = file(home.appendingPathComponent(".cursor/cli-config.json"))?["authInfo"] as? [String: Any] ?? [:]
                 account = info["authId"] as? String ?? (info["userId"] as? NSNumber)?.stringValue ?? info["userId"] as? String
             }
@@ -523,20 +654,35 @@ private enum GoviUsageSource {
             headers = ["Cookie": "WorkosCursorSessionToken=" + (try token(account)) + "::" + (try token(access))]
         case .grok:
             let root = file(home.appendingPathComponent(".grok/auth.json")) ?? [:]
-            let entry = root.first { key, value in
-                key.components(separatedBy: "::").first == "https://auth.x.ai" || (value as? [String: Any])?["oidc_issuer"] as? String == "https://auth.x.ai"
-            }?.value as? [String: Any] ?? [:]
+            let entry =
+                root.first { key, value in
+                    key.components(separatedBy: "::").first == "https://auth.x.ai"
+                        || (value as? [String: Any])?["oidc_issuer"] as? String == "https://auth.x.ai"
+                }?.value as? [String: Any] ?? [:]
             endpoint = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
             headers = ["Authorization": "Bearer " + (try token(entry["key"])), "X-XAI-Token-Auth": "xai-grok-cli"]
         case .opencode:
-            let folder = (ProcessInfo.processInfo.environment["XDG_DATA_HOME"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".local/share")).appendingPathComponent("opencode")
-            let stored = rows(folder.appendingPathComponent("opencode.db"), sql: "SELECT integration_id, value FROM credential WHERE integration_id IN ('opencode-go','opencode') AND COALESCE(active,1) != 0 ORDER BY time_updated DESC", columns: 2)
+            let folder =
+                (ProcessInfo.processInfo.environment["XDG_DATA_HOME"].map { URL(fileURLWithPath: $0) }
+                ?? home.appendingPathComponent(".local/share")).appendingPathComponent("opencode")
+            let stored = rows(
+                folder.appendingPathComponent("opencode.db"),
+                sql:
+                    "SELECT integration_id, value FROM credential WHERE integration_id IN ('opencode-go','opencode') AND COALESCE(active,1) != 0 ORDER BY time_updated DESC",
+                columns: 2)
             var entry: [String: Any]?
             for key in ["opencode-go", "opencode"] {
-                if let row = stored.first(where: { $0[0] == key }), let value = json(Data(row[1].utf8)) { entry = value; break }
+                if let row = stored.first(where: { $0[0] == key }), let value = json(Data(row[1].utf8)) {
+                    entry = value
+                    break
+                }
             }
-            if entry == nil { let auth = file(folder.appendingPathComponent("auth.json")) ?? [:]; entry = auth["opencode-go"] as? [String: Any] ?? auth["opencode"] as? [String: Any] }
-            let value = entry ?? [:]; let oauth = value["type"] as? String == "oauth"
+            if entry == nil {
+                let auth = file(folder.appendingPathComponent("auth.json")) ?? [:]
+                entry = auth["opencode-go"] as? [String: Any] ?? auth["opencode"] as? [String: Any]
+            }
+            let value = entry ?? [:]
+            let oauth = value["type"] as? String == "oauth"
             let metadata = value["metadata"] as? [String: Any] ?? [:]
             if let server = metadata["server"] as? String, URL(string: server)?.host != "opencode.ai" { throw GoviUsageFailure.signIn }
             endpoint = oauth ? "https://opencode.ai/inference/go/v1/usage" : "https://opencode.ai/zen/go/v1/usage"
@@ -551,17 +697,21 @@ private enum GoviUsageSource {
     }
     static func fetch(_ agent: GoviAgent, interactive: Bool) async throws -> [GoviUsageWindow] {
         if agent == .claude, !interactive {
-            do { if let windows = try claudeCLI() { return windows } }
-            catch GoviUsageFailure.rateLimited(let delay) { throw GoviUsageFailure.rateLimited(delay) }
-            catch { /* An unavailable CLI can still have a readable OAuth sign-in. */ }
+            do { if let windows = try claudeCLI() { return windows } } catch GoviUsageFailure.rateLimited(let delay) {
+                throw GoviUsageFailure.rateLimited(delay)
+            } catch { /* An unavailable CLI can still have a readable OAuth sign-in. */  }
         }
         let request = try request(agent, interactive: interactive)
-        let config = URLSessionConfiguration.ephemeral; config.httpShouldSetCookies = false; config.urlCache = nil
+        let config = URLSessionConfiguration.ephemeral
+        config.httpShouldSetCookies = false
+        config.urlCache = nil
         let session = URLSession(configuration: config, delegate: GoviUsageRedirectGuard(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw GoviUsageFailure.response(0) }
-        if http.statusCode == 429 { throw GoviUsageFailure.rateLimited(max(60, Double(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 300)) }
+        if http.statusCode == 429 {
+            throw GoviUsageFailure.rateLimited(max(60, Double(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 300))
+        }
         if http.statusCode == 401 || http.statusCode == 403 { throw GoviUsageFailure.unauthorized }
         guard http.statusCode == 200, let root = json(data) else { throw GoviUsageFailure.response(http.statusCode) }
         let windows = GoviUsageParser.parse(agent, root)
@@ -573,8 +723,12 @@ private enum GoviUsageSource {
 @MainActor final class GoviUsageStore: ObservableObject {
     static let shared = GoviUsageStore()
     struct Reading {
-        var windows: [GoviUsageWindow] = []; var date: Date?; var message = "Not checked"; var busy = false
-        var nextRefresh: Date?; var retry: Date?
+        var windows: [GoviUsageWindow] = []
+        var date: Date?
+        var message = "Not checked"
+        var busy = false
+        var nextRefresh: Date?
+        var retry: Date?
         var hasAccount = false
         /// Credentials exist but Govi needs the user's click (Keychain prompt) to read them.
         var needsConnect = false
@@ -585,23 +739,41 @@ private enum GoviUsageSource {
         var ringWindows: [GoviUsageWindow] { Array(windows.prefix(2)) }
         var isVisible: Bool { hasAccount || !windows.isEmpty || needsConnect || expired }
         mutating func failed(_ error: Error, agent: GoviAgent, now: Date = Date()) {
-            busy = false; needsConnect = false; expired = false
+            busy = false
+            needsConnect = false
+            expired = false
             nextRefresh = now.addingTimeInterval(agent == .claude ? 300 : 60)
             switch error {
             case GoviUsageFailure.signIn:
-                message = "Sign in or refresh your session in \(agent.name)."; windows = []; date = nil; hasAccount = false
+                message = "Sign in or refresh your session in \(agent.name)."
+                windows = []
+                date = nil
+                hasAccount = false
             case GoviUsageFailure.unauthorized:
-                message = "Sign in or refresh your session in \(agent.name)."; windows = []; date = nil; hasAccount = true
+                message = "Sign in or refresh your session in \(agent.name)."
+                windows = []
+                date = nil
+                hasAccount = true
             case GoviUsageFailure.expired:
-                message = "Session expired. Run \(agent.name) once to renew it; usage appears automatically."; expired = true; hasAccount = true
+                message = "Session expired. Run \(agent.name) once to renew it; usage appears automatically."
+                expired = true
+                hasAccount = true
             case GoviUsageFailure.keychain:
-                message = "Keychain access needed. Click to connect."; needsConnect = true; hasAccount = true
+                message = "Keychain access needed. Click to connect."
+                needsConnect = true
+                hasAccount = true
             case GoviUsageFailure.empty:
-                message = "No supported quota reported for this account."; windows = []; date = nil; hasAccount = true
+                message = "No supported quota reported for this account."
+                windows = []
+                date = nil
+                hasAccount = true
             case GoviUsageFailure.rateLimited(let delay):
-                message = "Rate limited. Will retry later."; retry = now.addingTimeInterval(delay); hasAccount = true
+                message = "Rate limited. Will retry later."
+                retry = now.addingTimeInterval(delay)
+                hasAccount = true
             default:
-                message = "Couldn’t refresh usage. Try again later."; hasAccount = true
+                message = "Couldn’t refresh usage. Try again later."
+                hasAccount = true
             }
         }
     }
@@ -616,13 +788,20 @@ private enum GoviUsageSource {
     func refresh(_ agent: GoviAgent, interactive: Bool = false, force: Bool = false) {
         guard agent != .pi, readings[agent]?.busy != true, (readings[agent]?.retry ?? .distantPast) <= Date() else { return }
         guard force || (readings[agent]?.nextRefresh ?? .distantPast) <= Date() else { return }
-        var reading = readings[agent] ?? Reading(); reading.busy = true; readings[agent] = reading
+        var reading = readings[agent] ?? Reading()
+        reading.busy = true
+        readings[agent] = reading
         Task {
             do {
-                let windows = try await Task.detached(priority: .utility) { try await GoviUsageSource.fetch(agent, interactive: interactive) }.value
-                readings[agent] = .init(windows: windows, date: Date(), message: "", nextRefresh: Date().addingTimeInterval(agent == .claude ? 300 : 60), hasAccount: true)
+                let windows = try await Task.detached(priority: .utility) {
+                    try await GoviUsageSource.fetch(agent, interactive: interactive)
+                }.value
+                readings[agent] = .init(
+                    windows: windows, date: Date(), message: "", nextRefresh: Date().addingTimeInterval(agent == .claude ? 300 : 60),
+                    hasAccount: true)
             } catch {
-                var result = readings[agent] ?? Reading(); result.failed(error, agent: agent)
+                var result = readings[agent] ?? Reading()
+                result.failed(error, agent: agent)
                 readings[agent] = result
             }
         }
@@ -689,7 +868,9 @@ private struct GoviUsageRing: View {
                         Text(window.remainingText)
                             .font(.system(size: 8.5, weight: .semibold, design: .rounded)).monospacedDigit()
                             .minimumScaleFactor(0.7).lineLimit(1).padding(3)
-                    } else { GoviAgentGlyph(agent: agent) }
+                    } else {
+                        GoviAgentGlyph(agent: agent)
+                    }
                 } else {
                     GoviAgentGlyph(agent: agent).opacity(contrast == .increased ? 0.75 : 0.45)
                     if reading?.busy != true {
@@ -748,9 +929,12 @@ private struct GoviUsageCard: View {
                     Text(reading.message).font(GoviInk.font(10.5)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
                 }
             } else {
-                Text(agent == .pi ? "Uses your model provider’s account; no unified Pi quota."
-                     : reading?.busy == true ? "Checking usage…" : (reading?.message ?? "Checking connection…"))
-                    .font(GoviInk.font(11.5)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
+                Text(
+                    agent == .pi
+                        ? "Uses your model provider’s account; no unified Pi quota."
+                        : reading?.busy == true ? "Checking usage…" : (reading?.message ?? "Checking connection…")
+                )
+                .font(GoviInk.font(11.5)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
             }
             Text(reading?.needsConnect == true ? "Click to connect using your existing sign-in." : "Click to refresh.")
                 .font(GoviInk.font(10)).foregroundStyle(ui.muted.opacity(0.8))

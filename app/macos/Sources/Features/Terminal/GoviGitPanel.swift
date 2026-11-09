@@ -83,12 +83,19 @@ final class GoviGitChanges: ObservableObject {
 
     func refresh(_ path: String, force: Bool = false) {
         if path != directory {
-            directory = path; generation += 1
+            directory = path
+            generation += 1
             apply(Snapshot())
-            error = nil; notice = nil
+            error = nil
+            notice = nil
         }
-        guard force || !loading else { pending = true; return }
-        loading = true; lastRefresh = Date(); pending = false
+        guard force || !loading else {
+            pending = true
+            return
+        }
+        loading = true
+        lastRefresh = Date()
+        pending = false
         let token = generation
         DispatchQueue.global(qos: .utility).async {
             let snapshot = Self.read(path)
@@ -117,7 +124,10 @@ final class GoviGitChanges: ObservableObject {
     /// stream, so refreshes run at most once per second.
     private func filesChanged(_ change: GoviRepositoryWatcher.Change) {
         guard !directory.isEmpty else { return }
-        guard isVisible else { stale = true; return }
+        guard isVisible else {
+            stale = true
+            return
+        }
         if change.metadata { metadataRevision += 1 }
         guard !scheduled else { return }
         let wait = max(0, 1 - Date().timeIntervalSince(lastRefresh))
@@ -136,12 +146,16 @@ final class GoviGitChanges: ObservableObject {
         snapshot.gitDirectories = ((try? Git.run(top, ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"])) ?? "")
             .split(whereSeparator: \.isNewline).map(String.init)
         snapshot.hasHead = (try? Git.run(top, ["rev-parse", "--verify", "--quiet", "HEAD"])) != nil
-        snapshot.branch = (try? Git.run(top, ["symbolic-ref", "--short", "-q", "HEAD"]))?.trimmed.nonEmpty
+        snapshot.branch =
+            (try? Git.run(top, ["symbolic-ref", "--short", "-q", "HEAD"]))?.trimmed.nonEmpty
             ?? (try? Git.run(top, ["rev-parse", "--short", "HEAD"]))?.trimmed.nonEmpty ?? "No commits yet"
         snapshot.upstream = (try? Git.run(top, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]))?.trimmed.nonEmpty
         if snapshot.upstream != nil, let counts = try? Git.run(top, ["rev-list", "--left-right", "--count", "@{u}...HEAD"]) {
             let parts = counts.split(whereSeparator: \.isWhitespace).compactMap { Int($0) }
-            if parts.count == 2 { snapshot.behind = parts[0]; snapshot.ahead = parts[1] }
+            if parts.count == 2 {
+                snapshot.behind = parts[0]
+                snapshot.ahead = parts[1]
+            }
         }
 
         // Status: "XY path\0", with the original path as an extra entry for renames/copies.
@@ -150,11 +164,15 @@ final class GoviGitChanges: ObservableObject {
         var files: [File] = []
         var i = 0
         while i < entries.count {
-            let entry = entries[i]; i += 1
+            let entry = entries[i]
+            i += 1
             guard entry.count > 3 else { continue }
             let code = String(entry.prefix(2))
             var old: String?
-            if code.contains("R") || code.contains("C"), i < entries.count { old = entries[i]; i += 1 }
+            if code.contains("R") || code.contains("C"), i < entries.count {
+                old = entries[i]
+                i += 1
+            }
             files.append(File(path: String(entry.dropFirst(3)), oldPath: old, code: code))
         }
 
@@ -169,9 +187,10 @@ final class GoviGitChanges: ObservableObject {
             j += 1
             guard columns.count == 3 else { continue }
             var name = columns[2]
-            if name.isEmpty { // rename: "a\td\t\0old\0new\0"
+            if name.isEmpty {  // rename: "a\td\t\0old\0new\0"
                 guard j + 1 < records.count else { break }
-                name = records[j + 1]; j += 2
+                name = records[j + 1]
+                j += 2
             }
             stats[name] = (Int(columns[0]), Int(columns[1]))
         }
@@ -179,12 +198,21 @@ final class GoviGitChanges: ObservableObject {
             if files[k].untracked {
                 let url = URL(fileURLWithPath: top).appendingPathComponent(files[k].path)
                 let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-                guard size < 2_000_000, let data = try? Data(contentsOf: url) else { files[k].additions = nil; files[k].deletions = nil; continue }
-                if data.prefix(8000).contains(0) { files[k].additions = nil; files[k].deletions = nil; continue }
+                guard size < 2_000_000, let data = try? Data(contentsOf: url) else {
+                    files[k].additions = nil
+                    files[k].deletions = nil
+                    continue
+                }
+                if data.prefix(8000).contains(0) {
+                    files[k].additions = nil
+                    files[k].deletions = nil
+                    continue
+                }
                 let newlines = data.reduce(0) { $0 + ($1 == 10 ? 1 : 0) }
                 files[k].additions = newlines + (data.isEmpty || data.last == 10 ? 0 : 1)
             } else if let stat = stats[files[k].path] {
-                files[k].additions = stat.0; files[k].deletions = stat.1
+                files[k].additions = stat.0
+                files[k].deletions = stat.1
             }
         }
         snapshot.files = files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
@@ -192,7 +220,10 @@ final class GoviGitChanges: ObservableObject {
     }
 
     func diff(_ file: File, completion: @escaping (String) -> Void) {
-        guard let top = root else { completion(""); return }
+        guard let top = root else {
+            completion("")
+            return
+        }
         let base = hasHead ? "HEAD" : GoviGitRunner.emptyTree
         DispatchQueue.global(qos: .userInitiated).async {
             let text: String
@@ -209,7 +240,9 @@ final class GoviGitChanges: ObservableObject {
         guard let top = root, busy == nil, !selected.isEmpty else { return }
         let paths = Array(Set(selected.flatMap(\.paths))).sorted()
         let count = selected.count
-        busy = "Committing…"; error = nil; notice = nil
+        busy = "Committing…"
+        error = nil
+        notice = nil
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result {
                 try GoviGitRunner.run(top, ["add", "-A", "--"] + paths, mergeErrors: true)
@@ -230,7 +263,9 @@ final class GoviGitChanges: ObservableObject {
     func push() {
         guard let top = root, busy == nil else { return }
         let upstream = upstream
-        busy = "Pushing…"; error = nil; notice = nil
+        busy = "Pushing…"
+        error = nil
+        notice = nil
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { () throws -> String in
                 if upstream != nil {
@@ -239,7 +274,8 @@ final class GoviGitChanges: ObservableObject {
                 }
                 let remotes = (try GoviGitRunner.run(top, ["remote"])).split(whereSeparator: \.isNewline).map(String.init)
                 guard let remote = remotes.contains("origin") ? "origin" : remotes.first else {
-                    throw NSError(domain: "GoviGit", code: 1, userInfo: [NSLocalizedDescriptionKey: "This repository has no remote to push to."])
+                    throw NSError(
+                        domain: "GoviGit", code: 1, userInfo: [NSLocalizedDescriptionKey: "This repository has no remote to push to."])
                 }
                 try GoviGitRunner.run(top, ["push", "-u", remote, "HEAD"], mergeErrors: true, timeout: GoviGit.networkTimeout)
                 return "Pushed and set upstream to \(remote)."
@@ -295,10 +331,15 @@ enum GoviFileIcon {
     static func icon(for name: String) -> (symbol: String, color: Color) {
         let lower = name.lowercased()
         let ext = (lower as NSString).pathExtension
-        let blue = Color(red: 0.36, green: 0.62, blue: 0.98), yellow = Color(red: 0.95, green: 0.78, blue: 0.30)
-        let orange = Color(red: 0.98, green: 0.52, blue: 0.24), green = Color(red: 0.42, green: 0.80, blue: 0.48)
-        let purple = Color(red: 0.70, green: 0.52, blue: 0.95), pink = Color(red: 0.95, green: 0.45, blue: 0.65)
-        let teal = Color(red: 0.35, green: 0.78, blue: 0.80), gray = Color(white: 0.62), red = Color(red: 0.93, green: 0.38, blue: 0.36)
+        let blue = Color(red: 0.36, green: 0.62, blue: 0.98)
+        let yellow = Color(red: 0.95, green: 0.78, blue: 0.30)
+        let orange = Color(red: 0.98, green: 0.52, blue: 0.24)
+        let green = Color(red: 0.42, green: 0.80, blue: 0.48)
+        let purple = Color(red: 0.70, green: 0.52, blue: 0.95)
+        let pink = Color(red: 0.95, green: 0.45, blue: 0.65)
+        let teal = Color(red: 0.35, green: 0.78, blue: 0.80)
+        let gray = Color(white: 0.62)
+        let red = Color(red: 0.93, green: 0.38, blue: 0.36)
         switch lower {
         case "makefile", "dockerfile", "justfile": return ("hammer.fill", blue)
         case "license", "license.md", "license.txt": return ("checkmark.seal.fill", yellow)
@@ -349,7 +390,9 @@ struct GoviDiffLine: Hashable {
 
     static func parse(_ diff: String) -> [GoviDiffLine] {
         var rows: [GoviDiffLine] = []
-        var old = 0, new = 0, started = false
+        var old = 0
+        var new = 0
+        var started = false
         for line in diff.components(separatedBy: "\n") {
             if line.hasPrefix("@@") {
                 started = true
@@ -366,11 +409,21 @@ struct GoviDiffLine: Hashable {
                 if line.hasPrefix("Binary files") { rows.append(.init(kind: .note, old: nil, new: nil, text: line)) }
                 continue
             }
-            if line.hasPrefix("+") { rows.append(.init(kind: .added, old: nil, new: new, text: String(line.dropFirst()))); new += 1 }
-            else if line.hasPrefix("-") { rows.append(.init(kind: .removed, old: old, new: nil, text: String(line.dropFirst()))); old += 1 }
-            else if line.hasPrefix("\\") { rows.append(.init(kind: .note, old: nil, new: nil, text: line)) }
-            else if line.hasPrefix("diff --git") { started = false }
-            else { rows.append(.init(kind: .context, old: old, new: new, text: String(line.dropFirst()))); old += 1; new += 1 }
+            if line.hasPrefix("+") {
+                rows.append(.init(kind: .added, old: nil, new: new, text: String(line.dropFirst())))
+                new += 1
+            } else if line.hasPrefix("-") {
+                rows.append(.init(kind: .removed, old: old, new: nil, text: String(line.dropFirst())))
+                old += 1
+            } else if line.hasPrefix("\\") {
+                rows.append(.init(kind: .note, old: nil, new: nil, text: line))
+            } else if line.hasPrefix("diff --git") {
+                started = false
+            } else {
+                rows.append(.init(kind: .context, old: old, new: new, text: String(line.dropFirst())))
+                old += 1
+                new += 1
+            }
         }
         while let last = rows.last, last.kind == .context, last.text.isEmpty, last.old != nil { rows.removeLast() }
         return rows
@@ -379,18 +432,24 @@ struct GoviDiffLine: Hashable {
     /// Side-by-side rows: removals pair with the additions that follow them.
     static func split(_ lines: [GoviDiffLine]) -> [(left: GoviDiffLine?, right: GoviDiffLine?)] {
         var rows: [(left: GoviDiffLine?, right: GoviDiffLine?)] = []
-        var removed: [GoviDiffLine] = [], added: [GoviDiffLine] = []
+        var removed: [GoviDiffLine] = []
+        var added: [GoviDiffLine] = []
         func flush() {
             for i in 0..<max(removed.count, added.count) {
                 rows.append((left: i < removed.count ? removed[i] : nil, right: i < added.count ? added[i] : nil))
             }
-            removed = []; added = []
+            removed = []
+            added = []
         }
         for line in lines {
             switch line.kind {
-            case .removed: if !added.isEmpty { flush() }; removed.append(line)
+            case .removed:
+                if !added.isEmpty { flush() }
+                removed.append(line)
             case .added: added.append(line)
-            default: flush(); rows.append((left: line, right: line))
+            default:
+                flush()
+                rows.append((left: line, right: line))
             }
         }
         flush()
@@ -412,7 +471,10 @@ private enum GoviGitTree {
         let name: String, path: String
         var folders: [String: Node] = [:]
         var files: [GoviGitChanges.File] = []
-        init(name: String, path: String) { self.name = name; self.path = path }
+        init(name: String, path: String) {
+            self.name = name
+            self.path = path
+        }
         var allFiles: [GoviGitChanges.File] { files + folders.values.flatMap(\.allFiles) }
     }
 
@@ -431,9 +493,11 @@ private enum GoviGitTree {
         func walk(_ node: Node, depth: Int) {
             for folder in node.folders.values.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
                 // Compact single-child chains ("macos/Sources/Features"), like an editor does.
-                var current = folder, name = folder.name
+                var current = folder
+                var name = folder.name
                 while current.files.isEmpty, current.folders.count == 1, let only = current.folders.values.first {
-                    name += "/" + only.name; current = only
+                    name += "/" + only.name
+                    current = only
                 }
                 rows.append(.init(id: "dir:" + current.path, depth: depth, name: name, file: nil, descendants: current.allFiles))
                 if !collapsed.contains(current.path) { walk(current, depth: depth + 1) }
@@ -478,7 +542,9 @@ struct GoviGitPanel: View {
             header.padding(.horizontal, 14).frame(height: 50)
             separator
             if changes.root == nil {
-                emptyState("Not a Git repository", detail: "Open a terminal inside a repository to see its changes.", icon: "folder.badge.questionmark")
+                emptyState(
+                    "Not a Git repository", detail: "Open a terminal inside a repository to see its changes.",
+                    icon: "folder.badge.questionmark")
             } else if changes.files.isEmpty {
                 emptyState("No changes", detail: upToDateText, icon: "checkmark.circle")
             } else {
@@ -495,9 +561,15 @@ struct GoviGitPanel: View {
         .frame(width: expanded ? nil : 820, height: expanded ? nil : 560)
         .frame(maxWidth: expanded ? .infinity : nil, maxHeight: expanded ? .infinity : nil)
         .modifier(GoviGlassPanel(tint: expanded ? 0.82 : 0.6))
-        .onAppear { changes.refresh(directory, force: true); syncSelection() }
+        .onAppear {
+            changes.refresh(directory, force: true)
+            syncSelection()
+        }
         .onReceive(refreshTimer) { _ in if changes.isVisible { changes.refresh(directory) } }
-        .onChange(of: changes.files) { _ in syncSelection(); loadDiff() }
+        .onChange(of: changes.files) { _ in
+            syncSelection()
+            loadDiff()
+        }
         .onChange(of: selected) { _ in loadDiff() }
         .onExitCommand(perform: close)
     }
@@ -506,7 +578,9 @@ struct GoviGitPanel: View {
 
     private var upToDateText: String {
         guard let upstream = changes.upstream else { return "Working tree is clean. This branch has no upstream yet." }
-        if changes.ahead > 0 { return "Working tree is clean. \(changes.ahead) commit\(changes.ahead == 1 ? "" : "s") ahead of \(upstream)." }
+        if changes.ahead > 0 {
+            return "Working tree is clean. \(changes.ahead) commit\(changes.ahead == 1 ? "" : "s") ahead of \(upstream)."
+        }
         if changes.behind > 0 { return "Working tree is clean. \(changes.behind) behind \(upstream)." }
         return "Working tree is clean and up to date with \(upstream)."
     }
@@ -531,9 +605,13 @@ struct GoviGitPanel: View {
                 GoviDiffStat(additions: changes.additions, deletions: changes.deletions)
             }
             HStack(spacing: 0) {
-                GoviIconButton(symbol: "arrow.clockwise", help: "Refresh") { changes.refresh(directory, force: true); loadDiff() }
-                GoviIconButton(symbol: expanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                               help: expanded ? "Shrink to a floating panel" : "Expand to a full-size pane", action: toggleExpanded)
+                GoviIconButton(symbol: "arrow.clockwise", help: "Refresh") {
+                    changes.refresh(directory, force: true)
+                    loadDiff()
+                }
+                GoviIconButton(
+                    symbol: expanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                    help: expanded ? "Shrink to a floating panel" : "Expand to a full-size pane", action: toggleExpanded)
                 GoviIconButton(symbol: "xmark", help: "Close (Esc)", action: close)
             }
         }
@@ -558,10 +636,13 @@ struct GoviGitPanel: View {
                     .padding(.horizontal, 6).padding(.vertical, 1).background(ui.accent.opacity(0.25), in: Capsule())
                 Spacer()
                 Button {
-                    let folders = GoviGitTree.rows(changes.files, collapsed: []).filter { $0.file == nil }.map { String($0.id.dropFirst(4)) }
+                    let folders = GoviGitTree.rows(changes.files, collapsed: []).filter { $0.file == nil }.map {
+                        String($0.id.dropFirst(4))
+                    }
                     collapsed = collapsed.isEmpty ? Set(folders) : []
                 } label: {
-                    Image(systemName: collapsed.isEmpty ? "rectangle.compress.vertical" : "rectangle.expand.vertical").font(.system(size: 11))
+                    Image(systemName: collapsed.isEmpty ? "rectangle.compress.vertical" : "rectangle.expand.vertical").font(
+                        .system(size: 11))
                 }.buttonStyle(.plain).foregroundStyle(ui.muted).help(collapsed.isEmpty ? "Collapse all folders" : "Expand all folders")
             }.padding(.horizontal, 12).frame(height: 32)
             ScrollView {
@@ -583,8 +664,10 @@ struct GoviGitPanel: View {
             }
         } else {
             let path = String(row.id.dropFirst(4))
-            GoviGitFolderRow(name: row.name, depth: row.depth, open: !collapsed.contains(path),
-                             count: row.descendants.count, check: checkState(row.descendants)) {
+            GoviGitFolderRow(
+                name: row.name, depth: row.depth, open: !collapsed.contains(path),
+                count: row.descendants.count, check: checkState(row.descendants)
+            ) {
                 if collapsed.contains(path) { collapsed.remove(path) } else { collapsed.insert(path) }
             } toggle: {
                 setIncluded(row.descendants, checkState(row.descendants) != .all)
@@ -645,7 +728,8 @@ struct GoviGitPanel: View {
                         ForEach(Array(shown.enumerated()), id: \.offset) { _, line in unifiedRow(line, width: width) }
                     }
                     if lines.count > shown.count {
-                        Text("Diff truncated · \(lines.count - shown.count) more lines").font(GoviInk.font(11)).foregroundStyle(ui.muted).padding(14)
+                        Text("Diff truncated · \(lines.count - shown.count) more lines").font(GoviInk.font(11)).foregroundStyle(ui.muted)
+                            .padding(14)
                     }
                 }.padding(.bottom, 8)
             }
@@ -712,7 +796,10 @@ struct GoviGitPanel: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let busy = changes.busy {
-                HStack(spacing: 6) { ProgressView().controlSize(.mini); Text(busy) }.font(GoviInk.font(11.5)).foregroundStyle(ui.muted)
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text(busy)
+                }.font(GoviInk.font(11.5)).foregroundStyle(ui.muted)
             } else if let error = changes.error {
                 Text(error).font(GoviInk.font(11.5)).foregroundStyle(GoviGitColors.removed).textSelection(.enabled)
                     .lineLimit(4).fixedSize(horizontal: false, vertical: true)
@@ -726,7 +813,9 @@ struct GoviGitPanel: View {
                         .onSubmit(commit)
                         .padding(.horizontal, 12).frame(height: 34)
                         .background(ui.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ui.ink.opacity(messageFocused ? 0.25 : 0.08), lineWidth: 1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(
+                                ui.ink.opacity(messageFocused ? 0.25 : 0.08), lineWidth: 1))
                     Button(action: commit) {
                         Label(included.count == changes.files.count ? "Commit all" : "Commit \(included.count)", systemImage: "checkmark")
                     }.buttonStyle(GoviPillButtonStyle(prominent: true)).disabled(!canCommit)
@@ -750,7 +839,10 @@ struct GoviGitPanel: View {
     }
 
     private func loadDiff() {
-        guard let file = selectedFile else { diffText = ""; return }
+        guard let file = selectedFile else {
+            diffText = ""
+            return
+        }
         loadingDiff = true
         changes.diff(file) { text in
             guard selected == file.path else { return }
@@ -762,7 +854,10 @@ struct GoviGitPanel: View {
     private func commit() {
         guard canCommit else { return }
         changes.commit(message: message.trimmingCharacters(in: .whitespacesAndNewlines), files: included) { ok in
-            if ok { message = ""; excluded = [] }
+            if ok {
+                message = ""
+                excluded = []
+            }
         }
     }
 }
@@ -844,7 +939,10 @@ private struct GoviGitFileRow: View {
                 .foregroundStyle(kindColor).frame(width: 12)
         }
         .padding(.horizontal, 6).frame(height: GoviTreeMetrics.row)
-        .background(selected ? ui.accent.opacity(0.22) : ui.ink.opacity(hovering ? 0.05 : 0), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(
+            selected ? ui.accent.opacity(0.22) : ui.ink.opacity(hovering ? 0.05 : 0),
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
         .contentShape(Rectangle())
         .onTapGesture(perform: select)
         .onHover { hovering = $0 }

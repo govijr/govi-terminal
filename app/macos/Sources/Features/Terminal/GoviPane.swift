@@ -10,7 +10,9 @@ enum GoviPaneNaming {
     static func title(_ surface: Ghostty.SurfaceView) -> String {
         let title = surface.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let path = surface.pwd ?? FileManager.default.homeDirectoryForCurrentUser.path
-        let isFolderTitle = title.isEmpty || title == "~" || title.hasPrefix("/") || title.hasPrefix("~/") || title.hasPrefix("…/") || title.hasPrefix(".../") || title == URL(fileURLWithPath: path).lastPathComponent
+        let isFolderTitle =
+            title.isEmpty || title == "~" || title.hasPrefix("/") || title.hasPrefix("~/") || title.hasPrefix("…/")
+            || title.hasPrefix(".../") || title == URL(fileURLWithPath: path).lastPathComponent
         if !isFolderTitle {
             let words = title.split(separator: " ")
             let executable = words.first.map { URL(fileURLWithPath: String($0)).lastPathComponent } ?? title
@@ -60,7 +62,8 @@ enum GoviPaneCoordinator {
         beginDrag(surface)
         let provider = NSItemProvider()
         provider.registerDataRepresentation(forTypeIdentifier: typeID, visibility: .ownProcess) { completion in
-            completion(Data(surface.id.uuidString.utf8), nil); return nil
+            completion(Data(surface.id.uuidString.utf8), nil)
+            return nil
         }
         provider.suggestedName = GoviPaneNaming.title(surface)
         return provider
@@ -70,7 +73,8 @@ enum GoviPaneCoordinator {
     @discardableResult
     static func previewDrop(on target: Ghostty.SurfaceView, at point: CGPoint, in size: CGSize) -> GoviSnapZone? {
         guard let draggedID, draggedID != target.id, owner(of: draggedID) != nil, owner(of: target.id) != nil,
-              size.width > 0, size.height > 0, point.x.isFinite, point.y.isFinite else {
+            size.width > 0, size.height > 0, point.x.isFinite, point.y.isFinite
+        else {
             leaveDrop(on: target.id)
             return nil
         }
@@ -87,7 +91,10 @@ enum GoviPaneCoordinator {
     /// terminal text is docking rather than a paste or a lost SwiftUI drop.
     static func updateNativeDrop(_ sender: any NSDraggingInfo, on target: Ghostty.SurfaceView) -> NSDragOperation? {
         guard sender.draggingPasteboard.types?.contains(pasteboardType) == true else { return nil }
-        guard nativeDragID(sender) == draggedID, draggedID != nil else { leaveDrop(on: target.id); return [] }
+        guard nativeDragID(sender) == draggedID, draggedID != nil else {
+            leaveDrop(on: target.id)
+            return []
+        }
         let local = target.convert(sender.draggingLocation, from: nil)
         let y = target.isFlipped ? local.y - target.bounds.minY : target.bounds.maxY - local.y
         let point = CGPoint(x: local.x - target.bounds.minX, y: y + GoviPaneMetrics.headerHeight)
@@ -97,7 +104,8 @@ enum GoviPaneCoordinator {
     static func performNativeDrop(_ sender: any NSDraggingInfo, on target: Ghostty.SurfaceView) -> Bool? {
         guard let operation = updateNativeDrop(sender, on: target) else { return nil }
         guard operation == .move, let id = draggedID, let destination = GoviPaneDragPreview.shared.target,
-              destination.id == target.id else { return false }
+            destination.id == target.id
+        else { return false }
         endDrag()
         // Finish AppKit's drop dispatch before reparenting its destination view.
         DispatchQueue.main.async { move(id, to: target, zone: destination.zone) }
@@ -105,7 +113,8 @@ enum GoviPaneCoordinator {
     }
     private static func nativeDragID(_ sender: any NSDraggingInfo) -> UUID? {
         let board = sender.draggingPasteboard
-        let value = board.string(forType: pasteboardType)
+        let value =
+            board.string(forType: pasteboardType)
             ?? board.data(forType: pasteboardType).flatMap { String(data: $0, encoding: .utf8) }
         return value.flatMap(UUID.init(uuidString:))
     }
@@ -113,7 +122,8 @@ enum GoviPaneCoordinator {
     @discardableResult
     static func move(_ id: UUID, to target: Ghostty.SurfaceView, zone: GoviSnapZone) -> Bool {
         guard id != target.id, let source = owner(of: id), let destination = owner(of: target.id),
-              let view = source.surfaceTree.first(where: { $0.id == id }) else { return false }
+            let view = source.surfaceTree.first(where: { $0.id == id })
+        else { return false }
         do {
             if source === destination {
                 let tree = try source.surfaceTree.docking(view: view, to: target, zone: zone)
@@ -133,7 +143,8 @@ enum GoviPaneCoordinator {
                 let targetTree = try destination.surfaceTree.replace(node: .leaf(view: target), with: .leaf(view: view))
                 source.undoManager?.removeAllActions(withTarget: source)
                 destination.undoManager?.removeAllActions(withTarget: destination)
-                source.surfaceTree = sourceTree; destination.surfaceTree = targetTree
+                source.surfaceTree = sourceTree
+                destination.surfaceTree = targetTree
                 source.focusedSurface = target
             }
             destination.focusedSurface = view
@@ -153,11 +164,14 @@ enum GoviPaneCoordinator {
         func build(_ items: ArraySlice<Ghostty.SurfaceView>, horizontal: Bool) -> Tree.Node {
             if items.count == 1 { return .leaf(view: items.first!) }
             let mid = (items.count + 1) / 2
-            return .split(.init(direction: horizontal ? .horizontal : .vertical, ratio: 0.5,
-                                left: build(items.prefix(mid), horizontal: !horizontal), right: build(items.dropFirst(mid), horizontal: !horizontal)))
+            return .split(
+                .init(
+                    direction: horizontal ? .horizontal : .vertical, ratio: 0.5,
+                    left: build(items.prefix(mid), horizontal: !horizontal), right: build(items.dropFirst(mid), horizontal: !horizontal)))
         }
-        owner.replaceSurfaceTree(.init(root: build(views[...], horizontal: true), zoomed: nil),
-                                 moveFocusTo: owner.focusedSurface, moveFocusFrom: owner.focusedSurface, undoAction: "Arrange Panes")
+        owner.replaceSurfaceTree(
+            .init(root: build(views[...], horizontal: true), zoomed: nil),
+            moveFocusTo: owner.focusedSurface, moveFocusFrom: owner.focusedSurface, undoAction: "Arrange Panes")
         DispatchQueue.main.async { if let focused = owner.focusedSurface { owner.window?.makeFirstResponder(focused) } }
         NotificationCenter.default.post(name: .goviLayoutChanged, object: nil)
     }
@@ -185,20 +199,22 @@ struct GoviTerminalPane: View {
             }
             // The terminal surface already paints its own translucent background;
             // a second layer here would stack up and hide the backdrop.
-            .background(GoviBackdropStore.terminalOpacity < 1 ? Color.clear : GoviInk.color(GoviTheme.current.background), ignoresSafeAreaEdges: [])
+            .background(
+                GoviBackdropStore.terminalOpacity < 1 ? Color.clear : GoviInk.color(GoviTheme.current.background), ignoresSafeAreaEdges: []
+            )
             .overlay(alignment: .top) { if isSplit && active { ui.line.frame(height: 1).allowsHitTesting(false) } }
-                .overlay(alignment: .topLeading) {
-                    if let target = dragPreview.target, target.id == surface.id {
-                        let rect = target.zone.rect(in: geometry.size).insetBy(dx: 3, dy: 3)
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(ui.accent.opacity(0.14))
-                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ui.accent.opacity(0.85), lineWidth: 1.5))
-                            .frame(width: max(0, rect.width), height: max(0, rect.height))
-                            .offset(x: rect.minX, y: rect.minY)
-                            .allowsHitTesting(false).accessibilityHidden(true)
-                    }
+            .overlay(alignment: .topLeading) {
+                if let target = dragPreview.target, target.id == surface.id {
+                    let rect = target.zone.rect(in: geometry.size).insetBy(dx: 3, dy: 3)
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(ui.accent.opacity(0.14))
+                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ui.accent.opacity(0.85), lineWidth: 1.5))
+                        .frame(width: max(0, rect.width), height: max(0, rect.height))
+                        .offset(x: rect.minX, y: rect.minY)
+                        .allowsHitTesting(false).accessibilityHidden(true)
                 }
-                .onDrop(of: [GoviPaneCoordinator.typeID], delegate: GoviPaneDropDelegate(surface: surface, size: geometry.size))
+            }
+            .onDrop(of: [GoviPaneCoordinator.typeID], delegate: GoviPaneDropDelegate(surface: surface, size: geometry.size))
         }
         .accessibilityElement(children: .contain).accessibilityLabel("Terminal pane: \(GoviPaneNaming.title(surface))")
     }
@@ -211,7 +227,8 @@ private struct GoviPaneDropDelegate: DropDelegate {
     let size: CGSize
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [GoviPaneCoordinator.typeID]) && GoviPaneCoordinator.draggedID != nil && GoviPaneCoordinator.draggedID != surface.id
+        info.hasItemsConforming(to: [GoviPaneCoordinator.typeID]) && GoviPaneCoordinator.draggedID != nil
+            && GoviPaneCoordinator.draggedID != surface.id
     }
     func dropEntered(info: DropInfo) { GoviPaneCoordinator.previewDrop(on: surface, at: info.location, in: size) }
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -221,13 +238,18 @@ private struct GoviPaneDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) { GoviPaneCoordinator.leaveDrop(on: surface.id) }
     func performDrop(info: DropInfo) -> Bool {
         guard let source = GoviPaneCoordinator.draggedID,
-              let zone = GoviPaneCoordinator.previewDrop(on: surface, at: info.location, in: size),
-              let provider = info.itemProviders(for: [GoviPaneCoordinator.typeID]).first else { GoviPaneCoordinator.leaveDrop(on: surface.id); return false }
+            let zone = GoviPaneCoordinator.previewDrop(on: surface, at: info.location, in: size),
+            let provider = info.itemProviders(for: [GoviPaneCoordinator.typeID]).first
+        else {
+            GoviPaneCoordinator.leaveDrop(on: surface.id)
+            return false
+        }
         GoviPaneCoordinator.endDrag()
         provider.loadDataRepresentation(forTypeIdentifier: GoviPaneCoordinator.typeID) { data, _ in
             DispatchQueue.main.async {
                 guard let data, let text = String(data: data, encoding: .utf8), let id = UUID(uuidString: text),
-                      id == source else { return }
+                    id == source
+                else { return }
                 GoviPaneCoordinator.move(id, to: surface, zone: zone)
             }
         }
@@ -247,7 +269,8 @@ private struct GoviPaneDragHandle: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: Handle, context: Context) {
-        view.surface = surface; view.isSplit = isSplit
+        view.surface = surface
+        view.isSplit = isSplit
         view.toolTip = "Drag to dock this terminal beside another pane. Drop in the center to swap."
     }
 
@@ -265,7 +288,9 @@ private struct GoviPaneDragHandle: NSViewRepresentable {
             if event.clickCount == 2, isSplit {
                 _ = surface?.surfaceModel?.perform(action: "toggle_split_zoom")
                 mouseDownPoint = nil
-            } else { mouseDownPoint = convert(event.locationInWindow, from: nil) }
+            } else {
+                mouseDownPoint = convert(event.locationInWindow, from: nil)
+            }
         }
         override func mouseUp(with event: NSEvent) { mouseDownPoint = nil }
         override func mouseDragged(with event: NSEvent) {
@@ -278,7 +303,8 @@ private struct GoviPaneDragHandle: NSViewRepresentable {
             writer.setString(surface.id.uuidString, forType: GoviPaneCoordinator.pasteboardType)
             let item = NSDraggingItem(pasteboardWriter: writer)
             let image = dragImage(title: GoviPaneNaming.title(surface))
-            item.setDraggingFrame(NSRect(x: point.x - 12, y: point.y - 14, width: image.size.width, height: image.size.height), contents: image)
+            item.setDraggingFrame(
+                NSRect(x: point.x - 12, y: point.y - 14, width: image.size.width, height: image.size.height), contents: image)
             NSCursor.closedHand.set()
             let session = beginDraggingSession(with: [item], event: event, source: self)
             session.animatesToStartingPositionsOnCancelOrFail = true
@@ -287,7 +313,8 @@ private struct GoviPaneDragHandle: NSViewRepresentable {
             context == .withinApplication ? .move : []
         }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-            dragging = false; mouseDownPoint = nil
+            dragging = false
+            mouseDownPoint = nil
             GoviPaneCoordinator.endDrag()
             NSCursor.arrow.set()
         }
@@ -332,7 +359,8 @@ struct GoviPaneBar: View {
         let path = surface.pwd.map(GoviPaneNaming.shortPath)
         HStack(spacing: 6) {
             HStack(spacing: 6) {
-                GoviSymbol(symbol: "arrow.up.and.down.and.arrow.left.and.right").scaleEffect(0.75).frame(width: 14, height: 14).foregroundStyle(ui.muted)
+                GoviSymbol(symbol: "arrow.up.and.down.and.arrow.left.and.right").scaleEffect(0.75).frame(width: 14, height: 14)
+                    .foregroundStyle(ui.muted)
                 Text(title).foregroundStyle(ui.ink).lineLimit(1)
                 if let path, path != "~" || !title.hasSuffix("~") {
                     Text(path).foregroundStyle(ui.muted).lineLimit(1).truncationMode(.head)
@@ -346,7 +374,9 @@ struct GoviPaneBar: View {
                 button("rectangle.split.1x2", "Split below (\(shortcuts.chord(.splitDown).display))") { perform("new_split:down") }
                 button("plus.square.on.square", "New workspace here (\(shortcuts.chord(.newWorkspace).display))") { perform("new_tab") }
                 if isSplit {
-                    button("arrow.up.left.and.arrow.down.right", "Maximize / restore terminal (\(shortcuts.chord(.zoom).display))") { perform("toggle_split_zoom") }
+                    button("arrow.up.left.and.arrow.down.right", "Maximize / restore terminal (\(shortcuts.chord(.zoom).display))") {
+                        perform("toggle_split_zoom")
+                    }
                 }
                 button("xmark", "Close terminal (\(shortcuts.chord(.closeTerminal).display))") { perform("close_surface") }
             }.opacity(showButtons ? 1 : 0).allowsHitTesting(showButtons)

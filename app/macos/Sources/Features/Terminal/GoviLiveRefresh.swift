@@ -31,18 +31,28 @@ final class GoviRepositoryWatcher {
         paths = wanted
         self.gitDirectories = directories
         guard !wanted.isEmpty else { return }
-        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
-                                           retain: nil, release: nil, copyDescription: nil)
-        let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
-                                             | kFSEventStreamCreateFlagIgnoreSelf)
-        guard let stream = FSEventStreamCreate(nil, { _, info, count, paths, _, _ in
-            guard let info else { return }
-            let watcher = Unmanaged<GoviRepositoryWatcher>.fromOpaque(info).takeUnretainedValue()
-            let changed = (unsafeBitCast(paths, to: NSArray.self) as? [String]) ?? []
-            watcher.received(Array(changed.prefix(count)))
-        }, &context, wanted as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.5, flags) else { return }
+        var context = FSEventStreamContext(
+            version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
+            retain: nil, release: nil, copyDescription: nil)
+        let flags = FSEventStreamCreateFlags(
+            kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
+                | kFSEventStreamCreateFlagIgnoreSelf)
+        guard
+            let stream = FSEventStreamCreate(
+                nil,
+                { _, info, count, paths, _, _ in
+                    guard let info else { return }
+                    let watcher = Unmanaged<GoviRepositoryWatcher>.fromOpaque(info).takeUnretainedValue()
+                    let changed = (unsafeBitCast(paths, to: NSArray.self) as? [String]) ?? []
+                    watcher.received(Array(changed.prefix(count)))
+                }, &context, wanted as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.5, flags)
+        else { return }
         FSEventStreamSetDispatchQueue(stream, .main)
-        guard FSEventStreamStart(stream) else { FSEventStreamInvalidate(stream); FSEventStreamRelease(stream); return }
+        guard FSEventStreamStart(stream) else {
+            FSEventStreamInvalidate(stream)
+            FSEventStreamRelease(stream)
+            return
+        }
         self.stream = stream
     }
 
@@ -100,8 +110,10 @@ final class GoviRepositoryWatcher {
         observers = []
         self.window = window
         guard let window else { return }
-        let names: [Notification.Name] = [NSWindow.didChangeOcclusionStateNotification,
-                                          NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification]
+        let names: [Notification.Name] = [
+            NSWindow.didChangeOcclusionStateNotification,
+            NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
+        ]
         observers = names.map { name in
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.update() }
@@ -126,7 +138,10 @@ struct GoviWindowVisibilityReader: NSViewRepresentable {
 
     private final class Reader: NSView {
         let visibility: GoviWindowVisibility
-        init(_ visibility: GoviWindowVisibility) { self.visibility = visibility; super.init(frame: .zero) }
+        init(_ visibility: GoviWindowVisibility) {
+            self.visibility = visibility
+            super.init(frame: .zero)
+        }
         required init?(coder: NSCoder) { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()

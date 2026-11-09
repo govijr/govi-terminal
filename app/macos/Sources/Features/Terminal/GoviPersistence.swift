@@ -55,8 +55,12 @@ enum GoviPersistence {
 
     @MainActor static func confirm(_ id: UUID, live: Bool, recovered: Bool) {
         lock.withLock {
-            if live && attached[id] != nil { confirmed.insert(id) }
-            else { confirmed.remove(id); attached[id] = nil }
+            if live && attached[id] != nil {
+                confirmed.insert(id)
+            } else {
+                confirmed.remove(id)
+                attached[id] = nil
+            }
         }
         if let owner = GoviPaneCoordinator.owner(of: id), let pane = owner.surfaceTree.first(where: { $0.id == id }) {
             pane.goviRecovered = recovered
@@ -75,7 +79,10 @@ enum GoviPersistence {
     static func detach(_ tree: SplitTree<Ghostty.SurfaceView>) {
         let ids = tree.map { $0.id }
         lock.withLock {
-            for id in ids where attached.removeValue(forKey: id) != nil { detachedPanes.insert(id); confirmed.remove(id) }
+            for id in ids where attached.removeValue(forKey: id) != nil {
+                detachedPanes.insert(id)
+                confirmed.remove(id)
+            }
         }
         DispatchQueue.main.async { GoviDetachedStore.shared.refresh(force: true) }
     }
@@ -89,9 +96,10 @@ enum GoviPersistence {
         let restoring = environment.removeValue(forKey: "GOVI_RECOVERED") == "1"
         guard let hc = hcPath, enabled || requested != nil else { return nil }
         let name: String
-        if let requested { name = requested }
-        else { name = storedNames[id.uuidString] ?? defaultName(for: id) }
-        guard (1...32).contains(name.utf8.count), name.utf8.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }) else { return nil }
+        if let requested { name = requested } else { name = storedNames[id.uuidString] ?? defaultName(for: id) }
+        guard (1...32).contains(name.utf8.count),
+            name.utf8.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 })
+        else { return nil }
         storedNames[id.uuidString] = name
         lock.withLock { attached[id] = name }
 
@@ -104,7 +112,8 @@ enum GoviPersistence {
         // hc forwards TERM (xterm-ghostty) but not TERMINFO. Without it zsh
         // reports an unknown terminal and its line editor can't redraw.
         if let terminfo = Bundle.main.resourceURL?.appendingPathComponent("terminfo").path,
-           FileManager.default.fileExists(atPath: terminfo) {
+            FileManager.default.fileExists(atPath: terminfo)
+        {
             environment["TERMINFO"] = terminfo
             environment["TERM"] = "xterm-ghostty"
         } else {
@@ -114,7 +123,8 @@ enum GoviPersistence {
             environment["GHOSTTY_RESOURCES_DIR"] = resources
             let integration = resources + "/shell-integration/zsh"
             if URL(fileURLWithPath: shell).lastPathComponent == "zsh",
-               FileManager.default.fileExists(atPath: integration + "/ghostty-integration") {
+                FileManager.default.fileExists(atPath: integration + "/ghostty-integration")
+            {
                 if let original = ProcessInfo.processInfo.environment["ZDOTDIR"] { environment["GHOSTTY_ZSH_ZDOTDIR"] = original }
                 environment["ZDOTDIR"] = integration
                 environment["GHOSTTY_SHELL_FEATURES"] = "cursor,sudo,title,ssh-env"
@@ -133,9 +143,10 @@ enum GoviPersistence {
         // would leave an invisible session, so the loop reattaches until the
         // program ends. If hc fails, fall back to a plain shell.
         let reportSocket = environment["GOVI_SUGGEST_SOCKET"] ?? ""
-        return GoviSessionScript.make(hc: hc, name: name, id: id, shell: shell, directory: directory,
-                                      program: program, assignments: assignments, socket: reportSocket,
-                                      restoring: restoring, version: environmentVersion)
+        return GoviSessionScript.make(
+            hc: hc, name: name, id: id, shell: shell, directory: directory,
+            program: program, assignments: assignments, socket: reportSocket,
+            restoring: restoring, version: environmentVersion)
     }
 
     /// Persistent shells outlive this app instance's socket path, so point
@@ -165,8 +176,12 @@ enum GoviPersistence {
         // Wait briefly: if the app is on its way out, the process ends first.
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) {
             guard !terminating else { return }
-            _ = run(hc, ["kill", name]); _ = run(hc, ["rm", name])
-            DispatchQueue.main.async { storedNames[id.uuidString] = nil; GoviDetachedStore.shared.refresh(force: true) }
+            _ = run(hc, ["kill", name])
+            _ = run(hc, ["rm", name])
+            DispatchQueue.main.async {
+                storedNames[id.uuidString] = nil
+                GoviDetachedStore.shared.refresh(force: true)
+            }
         }
     }
 
@@ -178,13 +193,19 @@ enum GoviPersistence {
 
     // MARK: Detached sessions
 
-    struct Session: Identifiable, Equatable, Sendable { var id: String { name }; let name: String; let agent: String; let cwd: String }
+    struct Session: Identifiable, Equatable, Sendable {
+        var id: String { name }
+        let name: String
+        let agent: String
+        let cwd: String
+    }
 
     /// Live Govi terminals that no open pane is showing.
     static func detached() -> [Session] {
         guard let hc = hcPath, let output = run(hc, ["ls", "--json", "--label", "govi=1"]),
-              let root = try? JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any],
-              let list = root["terminals"] as? [[String: Any]] else { return [] }
+            let root = try? JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any],
+            let list = root["terminals"] as? [[String: Any]]
+        else { return [] }
         let shown = Set(lock.withLock { attached.values })
         return list.compactMap { item in
             guard item["state"] as? String == "live", let name = item["name"] as? String, !shown.contains(name) else { return nil }
@@ -193,20 +214,25 @@ enum GoviPersistence {
     }
     static func end(_ name: String) {
         guard let hc = hcPath else { return }
-        _ = run(hc, ["kill", name]); _ = run(hc, ["rm", name])
+        _ = run(hc, ["kill", name])
+        _ = run(hc, ["rm", name])
     }
     @MainActor static func confirmEnd(_ session: Session) -> Bool {
         let alert = NSAlert()
         alert.messageText = "End this background session?"
         alert.informativeText = "Its program will stop. Unsaved work inside the program may be lost."
-        alert.addButton(withTitle: "End Session"); alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "End Session")
+        alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
         return alert.runModal() == .alertFirstButtonReturn
     }
     static func endPanes(_ ids: [UUID]) {
-        let names = lock.withLock { ids.compactMap { id -> String? in
-            confirmed.remove(id); return attached.removeValue(forKey: id)
-        } }
+        let names = lock.withLock {
+            ids.compactMap { id -> String? in
+                confirmed.remove(id)
+                return attached.removeValue(forKey: id)
+            }
+        }
         for id in ids { storedNames[id.uuidString] = nil }
         DispatchQueue.global(qos: .userInitiated).async { for name in names { end(name) } }
     }
@@ -232,9 +258,13 @@ enum GoviPersistence {
     private var last = Date.distantPast
 
     func refresh(force: Bool = false) {
-        guard GoviPersistence.hcPath != nil else { if !sessions.isEmpty { sessions = [] }; return }
+        guard GoviPersistence.hcPath != nil else {
+            if !sessions.isEmpty { sessions = [] }
+            return
+        }
         guard !loading, force || Date().timeIntervalSince(last) > 5 else { return }
-        loading = true; last = Date()
+        loading = true
+        last = Date()
         DispatchQueue.global(qos: .utility).async {
             let found = GoviPersistence.detached()
             DispatchQueue.main.async {
@@ -272,9 +302,12 @@ struct GoviPersistenceSettingsView: View {
                 .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
             Toggle("Keep new terminals running after Govi quits", isOn: $enabled)
                 .disabled(helper == nil)
-            Text(helper != nil ? "Ready. New terminals can reconnect after quitting or updating Govi. Closing a workspace keeps them in Running in background; closing a terminal lets you keep or end its program. A computer restart ends local programs."
-                 : "Install the session helper to keep programs running while Govi is closed. Setup opens a terminal and asks before installing.")
-                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4).textSelection(.enabled)
+            Text(
+                helper != nil
+                    ? "Ready. New terminals can reconnect after quitting or updating Govi. Closing a workspace keeps them in Running in background; closing a terminal lets you keep or end its program. A computer restart ends local programs."
+                    : "Install the session helper to keep programs running while Govi is closed. Setup opens a terminal and asks before installing."
+            )
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4).textSelection(.enabled)
             HStack {
                 if helper == nil { Button("Set Up Session Recovery…", action: installHelper) }
                 Button("Locate Helper…", action: locateHelper)
@@ -297,11 +330,17 @@ struct GoviPersistenceSettingsView: View {
                             Text(GoviPaneNaming.shortPath(session.cwd)).font(GoviInk.font(10)).foregroundStyle(ui.muted).lineLimit(1)
                         }
                         Spacer()
-                        Button("Open") { GoviPersistence.open(session); sessions.removeAll { $0 == session } }.controlSize(.small)
+                        Button("Open") {
+                            GoviPersistence.open(session)
+                            sessions.removeAll { $0 == session }
+                        }.controlSize(.small)
                         Button("End") {
                             guard GoviPersistence.confirmEnd(session) else { return }
                             let name = session.name
-                            DispatchQueue.global(qos: .userInitiated).async { GoviPersistence.end(name); DispatchQueue.main.async(execute: reload) }
+                            DispatchQueue.global(qos: .userInitiated).async {
+                                GoviPersistence.end(name)
+                                DispatchQueue.main.async(execute: reload)
+                            }
                         }.controlSize(.small)
                     }.font(GoviInk.font(12))
                 }
@@ -310,24 +349,37 @@ struct GoviPersistenceSettingsView: View {
     }
     private func reload() {
         helper = GoviPersistence.hcPath
-        guard helper != nil else { sessions = []; return }
+        guard helper != nil else {
+            sessions = []
+            return
+        }
         guard !loading else { return }
         loading = true
         DispatchQueue.global(qos: .userInitiated).async {
             let found = GoviPersistence.detached()
-            DispatchQueue.main.async { sessions = found; loading = false }
+            DispatchQueue.main.async {
+                sessions = found
+                loading = false
+            }
         }
     }
     private func locateHelper() {
-        let panel = NSOpenPanel(); panel.title = "Locate session helper"; panel.message = "Choose the installed hc executable."
-        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url, url.lastPathComponent == "hc", FileManager.default.isExecutableFile(atPath: url.path) else { return }
-        UserDefaults.standard.set(url.path, forKey: "GoviHelperPath"); reload()
+        let panel = NSOpenPanel()
+        panel.title = "Locate session helper"
+        panel.message = "Choose the installed hc executable."
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url, url.lastPathComponent == "hc",
+            FileManager.default.isExecutableFile(atPath: url.path)
+        else { return }
+        UserDefaults.standard.set(url.path, forKey: "GoviHelperPath")
+        reload()
     }
     private func installHelper() {
         guard let ghostty = (NSApp.delegate as? AppDelegate)?.ghostty else { return }
         var config = Ghostty.SurfaceConfiguration()
-        config.command = "/bin/bash " + GoviShell.quote(GoviResources.resourceURL.appendingPathComponent("Tools/govi-tool").path) + " recovery"
+        config.command =
+            "/bin/bash " + GoviShell.quote(GoviResources.resourceURL.appendingPathComponent("Tools/govi-tool").path) + " recovery"
         config.waitAfterCommand = true
         _ = TerminalController.newTab(ghostty, from: TerminalController.preferredParent?.window, withBaseConfig: config)
     }

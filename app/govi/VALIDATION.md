@@ -1,5 +1,26 @@
 # Govi build record
 
+## November 9, 2026 — bounded subprocesses, file-event git refresh, cleanup
+
+All subprocesses now go through `GoviLocalProcess` (deadline, output cap,
+stderr modes, cancellation); git calls time out (15s local, 120s for push and
+worktree creation). The `/usr/bin/security` read of Claude Code's sign-in was
+removed; usage comes from `claude /usage` or a user-approved Keychain read.
+Git state refreshes on FSEvents for the repository and its git directories;
+the Changes panel/dock timers are 15s/30s fallbacks and hidden or minimized
+windows skip refreshes. `GoviTasksView` and `GoviWorkbench` were split into
+model, component, sidebar, dock and splash files, and Govi sources were
+formatted with `swift-format` (`app/.swift-format`).
+
+Verified: `./govi/build.sh`; `test-workflows.sh` (new runner and git checks),
+`test-integrations.sh`, `test-remote.sh`, `test-layout.sh`, and the
+agent-usage, recovery, hooks and palette Python suites. The usage and recovery
+suites were missing `GoviRemoteModels.swift` and had been failing to compile.
+
+**Not live-verified:** the rebuilt app was not launched. File-event refresh,
+visibility pausing and the Keychain "Click to connect" path for Claude usage
+need a hands-on check.
+
 ## November 7, 2026 — GitHub and Linear integration
 
 Added the inline Tasks pane and Settings → Connections, GitHub CLI account

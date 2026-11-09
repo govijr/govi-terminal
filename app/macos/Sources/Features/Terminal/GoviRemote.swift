@@ -57,28 +57,35 @@ struct GoviRemoteEntry: Identifiable, Equatable {
     func refresh(force: Bool = false) {
         guard !refreshing else { return }
         if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < 30 { return }
-        refreshing = true; lastRefresh = Date()
+        refreshing = true
+        lastRefresh = Date()
         Task {
-            let (entries, path, net, state) = await Task.detached(priority: .utility) { () -> ([GoviSSHConfig.Entry], String?, GoviTailnet?, TailscaleState) in
+            let (entries, path, net, state) = await Task.detached(priority: .utility) {
+                () -> ([GoviSSHConfig.Entry], String?, GoviTailnet?, TailscaleState) in
                 let entries = GoviSSHConfig.load()
                 guard let path = GoviTailnet.executableCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
                     return (entries, nil, nil, .missing)
                 }
                 guard let result = GoviLocalProcess.run(path, ["status", "--json"], timeout: 5, limit: 16_777_216), !result.timedOut,
-                      let net = GoviTailnet.decode(Data(result.output.utf8)) else {
+                    let net = GoviTailnet.decode(Data(result.output.utf8))
+                else {
                     return (entries, path, nil, .unavailable("Tailscale didn't respond. Open the Tailscale app, then refresh."))
                 }
-                let state: TailscaleState = switch net.backendState {
-                case "Running": .running
-                case "NeedsLogin": .unavailable("Sign in to Tailscale to see your devices.")
-                case "NeedsMachineAuth": .unavailable("This Mac is waiting for approval from your tailnet admin.")
-                case "Starting": .unavailable("Tailscale is starting…")
-                default: .unavailable("Tailscale is turned off.")
-                }
+                let state: TailscaleState =
+                    switch net.backendState {
+                    case "Running": .running
+                    case "NeedsLogin": .unavailable("Sign in to Tailscale to see your devices.")
+                    case "NeedsMachineAuth": .unavailable("This Mac is waiting for approval from your tailnet admin.")
+                    case "Starting": .unavailable("Tailscale is starting…")
+                    default: .unavailable("Tailscale is turned off.")
+                    }
                 if state == .running { Self.writeKnownHosts(net.knownHosts) }
                 return (entries, path, state == .running ? net : nil, state)
             }.value
-            configured = entries; tailscalePath = path; tailnet = net; tailscaleState = state
+            configured = entries
+            tailscalePath = path
+            tailnet = net
+            tailscaleState = state
             refreshing = false
         }
     }
@@ -90,7 +97,8 @@ struct GoviRemoteEntry: Identifiable, Equatable {
         let url = URL(fileURLWithPath: path)
         if (try? String(contentsOf: url, encoding: .utf8)) == text { return }
         do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try Data(text.utf8).write(to: url, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
         } catch {}
@@ -110,31 +118,39 @@ struct GoviRemoteEntry: Identifiable, Equatable {
             let device = device(for: host.target)
             var detail = [host.target.destination]
             if let directory = host.target.directory { detail.append(directory) }
-            result.append(.init(id: "saved:" + host.id.uuidString, kind: .saved, target: host.target, savedID: host.id,
-                                detail: detail.joined(separator: " · "), online: device?.online,
-                                tailscaleSSH: device?.runsTailscaleSSH ?? false, os: device?.os))
+            result.append(
+                .init(
+                    id: "saved:" + host.id.uuidString, kind: .saved, target: host.target, savedID: host.id,
+                    detail: detail.joined(separator: " · "), online: device?.online,
+                    tailscaleSSH: device?.runsTailscaleSSH ?? false, os: device?.os))
         }
         let savedHosts = Set(saved.map { $0.target.host.lowercased() })
         for device in tailnet?.devices ?? [] where !device.isSelf {
             guard let target = device.target, !savedHosts.contains(target.host.lowercased()) else { continue }
-            let detail = [device.online ? "Online" : "Offline", device.os, device.addresses.first].compactMap { $0 }.joined(separator: " · ")
-            result.append(.init(id: "tailnet:" + device.id, kind: .tailnet, target: target, detail: detail,
-                                online: device.online, tailscaleSSH: device.runsTailscaleSSH, os: device.os))
+            let detail = [device.online ? "Online" : "Offline", device.os, device.addresses.first].compactMap { $0 }.joined(
+                separator: " · ")
+            result.append(
+                .init(
+                    id: "tailnet:" + device.id, kind: .tailnet, target: target, detail: detail,
+                    online: device.online, tailscaleSSH: device.runsTailscaleSSH, os: device.os))
         }
         for entry in configured where !savedHosts.contains(entry.alias.lowercased()) {
             let target = GoviRemoteTarget(name: entry.alias, host: entry.alias)
             guard target.validationError == nil else { continue }
             let detail = [entry.user.map { $0 + "@" + (entry.hostName ?? entry.alias) } ?? entry.hostName, entry.port.map { "port \($0)" }]
                 .compactMap { $0 }.joined(separator: " · ")
-            result.append(.init(id: "config:" + entry.alias, kind: .sshConfig, target: target,
-                                detail: detail.isEmpty ? "~/.ssh/config" : detail, online: device(for: target)?.online))
+            result.append(
+                .init(
+                    id: "config:" + entry.alias, kind: .sshConfig, target: target,
+                    detail: detail.isEmpty ? "~/.ssh/config" : detail, online: device(for: target)?.online))
         }
         return result
     }
 
     /// Hosts for quick menus: recent connections first, then saved hosts.
     var quickTargets: [GoviRemoteTarget] {
-        var seen = Set<GoviRemoteTarget>(), result: [GoviRemoteTarget] = []
+        var seen = Set<GoviRemoteTarget>()
+        var result: [GoviRemoteTarget] = []
         for target in recents + saved.map(\.target) where seen.insert(target).inserted { result.append(target) }
         return Array(result.prefix(5))
     }
@@ -149,14 +165,18 @@ struct GoviRemoteEntry: Identifiable, Equatable {
         if let id, let index = saved.firstIndex(where: { $0.id == id }) {
             let old = saved[index].target
             if old != target { recents = recents.map { $0 == old ? target : $0 } }
-            saved[index].target = target; return id
+            saved[index].target = target
+            return id
         }
-        let host = GoviRemoteHost(target: target); saved.append(host); return host.id
+        let host = GoviRemoteHost(target: target)
+        saved.append(host)
+        return host.id
     }
 
     func openTailscale() {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "io.tailscale.ipn.macos")
-            ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "io.tailscale.ipn.macsys") {
+            ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "io.tailscale.ipn.macsys")
+        {
             NSWorkspace.shared.openApplication(at: url, configuration: .init())
         } else {
             NSWorkspace.shared.open(URL(string: "https://tailscale.com/download/mac")!)
@@ -168,7 +188,9 @@ struct GoviRemoteEntry: Identifiable, Equatable {
     /// Opens `target` in a new workspace, or in a split beside `surface`.
     /// Returns a message when the connection can't be started.
     @discardableResult
-    static func open(_ target: GoviRemoteTarget, ghostty: Ghostty.App, from window: NSWindow?, beside surface: Ghostty.SurfaceView? = nil) -> String? {
+    static func open(
+        _ target: GoviRemoteTarget, ghostty: Ghostty.App, from window: NSWindow?, beside surface: Ghostty.SurfaceView? = nil
+    ) -> String? {
         let target = target.normalized()
         if let error = target.validationError { return error }
         guard let command = GoviRemoteCommand.pane(target) else { return "Govi could not build the ssh command for \(target.name)." }
@@ -192,7 +214,8 @@ struct GoviRemoteEntry: Identifiable, Equatable {
 
     static func copyCommand(_ target: GoviRemoteTarget) {
         guard let text = GoviRemoteCommand.display(target) else { return }
-        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }
 
@@ -240,8 +263,12 @@ struct GoviRemoteHostsView: View {
             }
             .onChange(of: store.entries) { entries in
                 // A discovered host that was just saved moves to the Saved list.
-                if let id = selection, !entries.contains(where: { $0.id == id }), let saved = draftSavedID { selection = "saved:" + saved.uuidString }
-                if selection == nil, !adding, let initialSelection, let entry = entries.first(where: { $0.id == initialSelection }) { select(entry) }
+                if let id = selection, !entries.contains(where: { $0.id == id }), let saved = draftSavedID {
+                    selection = "saved:" + saved.uuidString
+                }
+                if selection == nil, !adding, let initialSelection, let entry = entries.first(where: { $0.id == initialSelection }) {
+                    select(entry)
+                }
             }
     }
 
@@ -252,7 +279,9 @@ struct GoviRemoteHostsView: View {
             HStack {
                 Text("Remote hosts").font(GoviInk.font(17).weight(.medium))
                 Spacer()
-                Button { store.refresh(force: true) } label: {
+                Button {
+                    store.refresh(force: true)
+                } label: {
                     if store.refreshing { ProgressView().controlSize(.mini) } else { Image(systemName: "arrow.clockwise") }
                 }.buttonStyle(.plain).help("Refresh ~/.ssh/config and Tailscale").disabled(store.refreshing)
             }
@@ -265,11 +294,16 @@ struct GoviRemoteHostsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     section("Saved", entries: visible.filter { $0.kind == .saved })
-                    section(store.tailnet?.tailnetName.map { "Tailnet · " + $0 } ?? "Tailnet", entries: visible.filter { $0.kind == .tailnet })
+                    section(
+                        store.tailnet?.tailnetName.map { "Tailnet · " + $0 } ?? "Tailnet", entries: visible.filter { $0.kind == .tailnet })
                     section("~/.ssh/config", entries: visible.filter { $0.kind == .sshConfig })
                     if visible.isEmpty {
-                        Text(query.isEmpty ? "Add a host, list machines in ~/.ssh/config, or connect Tailscale to see your devices here." : "No hosts match.")
-                            .font(GoviInk.font(11)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
+                        Text(
+                            query.isEmpty
+                                ? "Add a host, list machines in ~/.ssh/config, or connect Tailscale to see your devices here."
+                                : "No hosts match."
+                        )
+                        .font(GoviInk.font(11)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -282,23 +316,29 @@ struct GoviRemoteHostsView: View {
     }
 
     @ViewBuilder private var tailscaleCard: some View {
-        let card: (String, String, String?, (() -> Void)?) ->  AnyView = { symbol, text, button, action in
-            AnyView(HStack(alignment: .top, spacing: 8) {
-                Image(systemName: symbol).foregroundStyle(ui.accent).frame(width: 16)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(text).font(GoviInk.font(11)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
-                    if let button, let action { Button(button, action: action).controlSize(.small) }
-                }
-                Spacer(minLength: 0)
-            }.padding(10).background(ui.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous)))
+        let card: (String, String, String?, (() -> Void)?) -> AnyView = { symbol, text, button, action in
+            AnyView(
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: symbol).foregroundStyle(ui.accent).frame(width: 16)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(text).font(GoviInk.font(11)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
+                        if let button, let action { Button(button, action: action).controlSize(.small) }
+                    }
+                    Spacer(minLength: 0)
+                }.padding(10).background(ui.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous)))
         }
         switch store.tailscaleState {
         case .unknown: EmptyView()
-        case .missing: card("point.3.connected.trianglepath.dotted", "Install Tailscale to reach your devices from anywhere, without opening ports.", "Get Tailscale", store.openTailscale)
+        case .missing:
+            card(
+                "point.3.connected.trianglepath.dotted", "Install Tailscale to reach your devices from anywhere, without opening ports.",
+                "Get Tailscale", store.openTailscale)
         case .unavailable(let message): card("exclamationmark.triangle", message, "Open Tailscale", store.openTailscale)
         case .running:
             let online = store.tailnet?.devices.filter { $0.online && !$0.isSelf }.count ?? 0
-            card("point.3.connected.trianglepath.dotted", "Tailscale is connected · \(online) device\(online == 1 ? "" : "s") online", nil, nil)
+            card(
+                "point.3.connected.trianglepath.dotted", "Tailscale is connected · \(online) device\(online == 1 ? "" : "s") online", nil,
+                nil)
         }
     }
 
@@ -307,10 +347,19 @@ struct GoviRemoteHostsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(GoviInk.font(11).weight(.medium)).foregroundStyle(ui.muted).padding(.horizontal, 6).padding(.bottom, 2)
                 ForEach(entries) { entry in
-                    Button { select(entry) } label: { GoviRemoteRow(entry: entry, compact: false) }
-                        .buttonStyle(.plain).padding(.horizontal, 6).padding(.vertical, 5)
-                        .background(selection == entry.id ? ui.ink.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .contextMenu { Button("Connect") { connect(entry.target) }; Button("Copy ssh Command") { GoviRemoteLauncher.copyCommand(entry.target) } }
+                    Button {
+                        select(entry)
+                    } label: {
+                        GoviRemoteRow(entry: entry, compact: false)
+                    }
+                    .buttonStyle(.plain).padding(.horizontal, 6).padding(.vertical, 5)
+                    .background(
+                        selection == entry.id ? ui.ink.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                    .contextMenu {
+                        Button("Connect") { connect(entry.target) }
+                        Button("Copy ssh Command") { GoviRemoteLauncher.copyCommand(entry.target) }
+                    }
                 }
             }
         }
@@ -333,35 +382,46 @@ struct GoviRemoteHostsView: View {
                 commandPreview
                 if let failure { Text(failure).font(GoviInk.font(11)).foregroundStyle(.red).textSelection(.enabled) }
                 Spacer(minLength: 0)
-                Text("Govi never stores passwords or keys. ssh-agent, your Keychain and ~/.ssh/config handle sign-in, and password prompts appear in the terminal.")
-                    .font(GoviInk.font(10)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Govi never stores passwords or keys. ssh-agent, your Keychain and ~/.ssh/config handle sign-in, and password prompts appear in the terminal."
+                )
+                .font(GoviInk.font(10)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     if let id = draftSavedID { Button("Delete…") { delete(id) } }
                     Spacer()
                     Button(draftSavedID == nil ? "Save Host" : "Save Changes", action: saveDraft)
-                        .disabled(draft.normalized().validationError != nil || (draftSavedID != nil && store.saved.first { $0.id == draftSavedID }?.target == draft.normalized()))
-                    if surface != nil { Button("Connect in Split") { connect(draft, split: true) }.disabled(draft.normalized().validationError != nil) }
-                    Button("Connect") { connect(draft) }.keyboardShortcut(.defaultAction).disabled(draft.normalized().validationError != nil)
+                        .disabled(
+                            draft.normalized().validationError != nil
+                                || (draftSavedID != nil && store.saved.first { $0.id == draftSavedID }?.target == draft.normalized()))
+                    if surface != nil {
+                        Button("Connect in Split") { connect(draft, split: true) }.disabled(draft.normalized().validationError != nil)
+                    }
+                    Button("Connect") { connect(draft) }.keyboardShortcut(.defaultAction).disabled(
+                        draft.normalized().validationError != nil)
                 }
             }
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Your machines, one click away.").font(GoviInk.font(21).weight(.medium))
-                Text("Pick a host to connect, or add one. Govi lists aliases from ~/.ssh/config and, with Tailscale, every device on your tailnet with its online status. Tailnet connections trust the host keys Tailscale publishes, so there is no first-connection prompt.")
-                    .foregroundStyle(ui.muted).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Pick a host to connect, or add one. Govi lists aliases from ~/.ssh/config and, with Tailscale, every device on your tailnet with its online status. Tailnet connections trust the host keys Tailscale publishes, so there is no first-connection prompt."
+                )
+                .foregroundStyle(ui.muted).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
                 Button("Add Host…") { startAdding() }.padding(.top, 6)
             }
         }
     }
 
     @ViewBuilder private func discoveredNote(_ entry: GoviRemoteEntry) -> some View {
-        let text: String? = switch entry.kind {
-        case .saved: entry.tailscaleSSH ? "Tailnet device running Tailscale SSH." : nil
-        case .tailnet: entry.tailscaleSSH
-            ? "Runs Tailscale SSH: your tailnet identity signs you in, no keys needed."
-            : "This device doesn't run Tailscale SSH, so sign-in uses your SSH keys or password over the tailnet."
-        case .sshConfig: "From ~/.ssh/config. Options set there (keys, ProxyJump, ports) apply automatically."
-        }
+        let text: String? =
+            switch entry.kind {
+            case .saved: entry.tailscaleSSH ? "Tailnet device running Tailscale SSH." : nil
+            case .tailnet:
+                entry.tailscaleSSH
+                    ? "Runs Tailscale SSH: your tailnet identity signs you in, no keys needed."
+                    : "This device doesn't run Tailscale SSH, so sign-in uses your SSH keys or password over the tailnet."
+            case .sshConfig: "From ~/.ssh/config. Options set there (keys, ProxyJump, ports) apply automatically."
+            }
         if let text { Text(text).font(GoviInk.font(11)).foregroundStyle(ui.muted).fixedSize(horizontal: false, vertical: true) }
     }
 
@@ -377,17 +437,25 @@ struct GoviRemoteHostsView: View {
             }
             GridRow {
                 Text("Host").foregroundStyle(ui.muted)
-                TextField(draft.transport == .tailscale ? "device or device.tailnet.ts.net" : "example.com, 10.0.0.5 or an ssh config alias", text: $draft.host).textFieldStyle(.roundedBorder)
+                TextField(
+                    draft.transport == .tailscale ? "device or device.tailnet.ts.net" : "example.com, 10.0.0.5 or an ssh config alias",
+                    text: $draft.host
+                ).textFieldStyle(.roundedBorder)
             }
             GridRow {
                 Text("User").foregroundStyle(ui.muted)
-                TextField("Default: \(draft.transport == .tailscale ? NSUserName() : "from ssh config, else " + NSUserName())", text: optional(\.user)).textFieldStyle(.roundedBorder)
+                TextField(
+                    "Default: \(draft.transport == .tailscale ? NSUserName() : "from ssh config, else " + NSUserName())",
+                    text: optional(\.user)
+                ).textFieldStyle(.roundedBorder)
             }
             if draft.transport == .ssh {
                 GridRow {
                     Text("Port").foregroundStyle(ui.muted)
-                    TextField("22", text: Binding(get: { draft.port.map(String.init) ?? "" }, set: { draft.port = Int($0.filter(\.isNumber)) }))
-                        .textFieldStyle(.roundedBorder).frame(width: 90)
+                    TextField(
+                        "22", text: Binding(get: { draft.port.map(String.init) ?? "" }, set: { draft.port = Int($0.filter(\.isNumber)) })
+                    )
+                    .textFieldStyle(.roundedBorder).frame(width: 90)
                 }
                 GridRow {
                     Text("Identity file").foregroundStyle(ui.muted)
@@ -419,7 +487,8 @@ struct GoviRemoteHostsView: View {
                     Text("Runs").font(GoviInk.font(11)).foregroundStyle(ui.muted)
                     Spacer()
                     Button(copied ? "Copied" : "Copy") {
-                        GoviRemoteLauncher.copyCommand(target); copied = true
+                        GoviRemoteLauncher.copyCommand(target)
+                        copied = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
                     }.controlSize(.small)
                 }
@@ -431,24 +500,42 @@ struct GoviRemoteHostsView: View {
     }
 
     private func optional(_ path: WritableKeyPath<GoviRemoteTarget, String?>) -> Binding<String> {
-        Binding(get: { draft[keyPath: path] ?? "" }, set: { draft[keyPath: path] = $0.isEmpty ? nil : $0; failure = nil })
+        Binding(
+            get: { draft[keyPath: path] ?? "" },
+            set: {
+                draft[keyPath: path] = $0.isEmpty ? nil : $0
+                failure = nil
+            })
     }
 
     // MARK: Actions
 
     private func select(_ entry: GoviRemoteEntry) {
-        adding = false; selection = entry.id; draft = entry.target; draftSavedID = entry.savedID; failure = nil
+        adding = false
+        selection = entry.id
+        draft = entry.target
+        draftSavedID = entry.savedID
+        failure = nil
     }
     private func startAdding() {
-        selection = nil; adding = true; draftSavedID = nil; failure = nil
+        selection = nil
+        adding = true
+        draftSavedID = nil
+        failure = nil
         draft = .init(name: "", host: "", transport: store.tailscaleState == .running ? .tailscale : .ssh)
     }
     private func saveDraft() {
         var target = draft.normalized()
         if target.name.isEmpty { target.name = target.host }
-        if let error = target.validationError { failure = error; return }
-        draftSavedID = store.save(target, id: draftSavedID); draft = target; adding = false
-        selection = "saved:" + draftSavedID!.uuidString; failure = nil
+        if let error = target.validationError {
+            failure = error
+            return
+        }
+        draftSavedID = store.save(target, id: draftSavedID)
+        draft = target
+        adding = false
+        selection = "saved:" + draftSavedID!.uuidString
+        failure = nil
     }
     private func connect(_ target: GoviRemoteTarget, split: Bool = false) {
         var target = target.normalized()
@@ -458,16 +545,24 @@ struct GoviRemoteHostsView: View {
     }
     private func delete(_ id: UUID) {
         guard let host = store.saved.first(where: { $0.id == id }) else { return }
-        let alert = NSAlert(); alert.messageText = "Delete \(host.target.name)?"
+        let alert = NSAlert()
+        alert.messageText = "Delete \(host.target.name)?"
         alert.informativeText = "Open connections stay open. Your ~/.ssh/config and keys are not changed."
-        alert.addButton(withTitle: "Delete Host"); alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Delete Host")
+        alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        store.saved.removeAll { $0.id == id }; store.forget(host.target)
-        selection = nil; draftSavedID = nil; adding = false
+        store.saved.removeAll { $0.id == id }
+        store.forget(host.target)
+        selection = nil
+        draftSavedID = nil
+        adding = false
     }
     private func chooseIdentity() {
-        let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = false
-        panel.showsHiddenFiles = true; panel.message = "Choose a private key file. Govi stores only its path."
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.showsHiddenFiles = true
+        panel.message = "Choose a private key file. Govi stores only its path."
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -522,7 +617,9 @@ struct GoviRemoteSidebarRows: View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach(Self.visibleEntries(store)) { entry in
                 GoviHoverRow { hovering in
-                    Button { open(entry.target, false) } label: {
+                    Button {
+                        open(entry.target, false)
+                    } label: {
                         GoviRemoteRow(entry: entry, compact: true).foregroundStyle(hovering ? ui.ink : ui.muted)
                             .font(GoviInk.font(12.5).weight(.light)).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain).modifier(GoviSidebarRowStyle())
@@ -532,13 +629,18 @@ struct GoviRemoteSidebarRows: View {
                             Button("Connect in Split") { open(entry.target, true) }
                             Button("Copy ssh Command") { GoviRemoteLauncher.copyCommand(entry.target) }
                             Divider()
-                            if entry.kind == .saved { Button("Edit…") { edit(entry.id) } }
-                            else { Button("Save Host") { _ = store.save(entry.target) } }
+                            if entry.kind == .saved {
+                                Button("Edit…") { edit(entry.id) }
+                            } else {
+                                Button("Save Host") { _ = store.save(entry.target) }
+                            }
                         }
                 }
             }
             GoviHoverRow { hovering in
-                Button { edit(nil) } label: {
+                Button {
+                    edit(nil)
+                } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "ellipsis.circle").font(.system(size: 11)).frame(width: GoviSidebarMetrics.icon)
                         Text("All remote hosts…")
