@@ -1,50 +1,6 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Git runner
-
-/// Runs git with argument arrays (no shell), never prompting for credentials.
-/// Unlike `GoviGit.run`, output is returned untrimmed so porcelain formats parse exactly.
-enum GoviGitRunner {
-    /// Git's well-known empty tree, used as the diff base before the first commit.
-    static let emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-
-    private final class Box { var data = Data() }
-
-    @discardableResult
-    static func run(_ directory: String, _ arguments: [String], allow: Set<Int32> = [0], mergeErrors: Bool = false) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", directory, "--literal-pathspecs", "-c", "core.quotepath=off"] + arguments
-        var environment = ProcessInfo.processInfo.environment
-        environment["GIT_TERMINAL_PROMPT"] = "0"
-        environment["GIT_OPTIONAL_LOCKS"] = "0"
-        if environment["GIT_SSH_COMMAND"] == nil { environment["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes" }
-        process.environment = environment
-        let output = Pipe(), errors = Pipe()
-        process.standardOutput = output
-        process.standardError = mergeErrors ? output : errors
-        process.standardInput = FileHandle.nullDevice
-        try process.run()
-        let stderr = Box()
-        let group = DispatchGroup()
-        if !mergeErrors {
-            group.enter()
-            DispatchQueue.global(qos: .utility).async { stderr.data = errors.fileHandleForReading.readDataToEndOfFile(); group.leave() }
-        }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        group.wait()
-        let text = String(decoding: data, as: UTF8.self)
-        guard allow.contains(process.terminationStatus) else {
-            let message = (mergeErrors ? text : String(decoding: stderr.data, as: UTF8.self)).trimmingCharacters(in: .whitespacesAndNewlines)
-            throw NSError(domain: "GoviGit", code: Int(process.terminationStatus),
-                          userInfo: [NSLocalizedDescriptionKey: message.isEmpty ? "git exited with status \(process.terminationStatus)" : message])
-        }
-        return text
-    }
-}
-
 private extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
     var nonEmpty: String? { isEmpty ? nil : self }
@@ -84,6 +40,8 @@ final class GoviGitChanges: ObservableObject {
         var ahead = 0, behind = 0
         var hasHead = true
         var files: [File] = []
+        /// Git directories to watch alongside the root (outside it for linked worktrees).
+        var gitDirectories: [String] = []
     }
 
     @Published private(set) var root: String?
@@ -95,10 +53,30 @@ final class GoviGitChanges: ObservableObject {
     @Published var busy: String?
     @Published var error: String?
     @Published var notice: String?
+    /// Bumped when HEAD, refs or worktree metadata change on disk, so views
+    /// showing branches and worktrees can reload them without polling.
+    @Published private(set) var metadataRevision = 0
     private var hasHead = true
     private var loading = false
     private var directory = ""
     private var generation = 0
+    private lazy var watcher = GoviRepositoryWatcher { [weak self] change in self?.filesChanged(change) }
+    /// A refresh is wanted but was skipped because nobody can see the window.
+    private var stale = false
+    private var scheduled = false
+    /// A change arrived while a read was running; read again once it lands.
+    private var pending = false
+    private var lastRefresh = Date.distantPast
+
+    /// Set by the owning window. Hidden windows skip refreshes and catch up on return.
+    var isVisible = true {
+        didSet {
+            guard isVisible != oldValue, isVisible, stale else { return }
+            stale = false
+            metadataRevision += 1
+            refresh(directory)
+        }
+    }
 
     var additions: Int { files.reduce(0) { $0 + ($1.additions ?? 0) } }
     var deletions: Int { files.reduce(0) { $0 + ($1.deletions ?? 0) } }
@@ -109,8 +87,8 @@ final class GoviGitChanges: ObservableObject {
             apply(Snapshot())
             error = nil; notice = nil
         }
-        guard force || !loading else { return }
-        loading = true
+        guard force || !loading else { pending = true; return }
+        loading = true; lastRefresh = Date(); pending = false
         let token = generation
         DispatchQueue.global(qos: .utility).async {
             let snapshot = Self.read(path)
@@ -118,6 +96,7 @@ final class GoviGitChanges: ObservableObject {
                 self.loading = false
                 guard token == self.generation else { return }
                 self.apply(snapshot)
+                if self.pending { self.filesChanged(.init(workingTree: true)) }
             }
         }
     }
@@ -131,12 +110,31 @@ final class GoviGitChanges: ObservableObject {
         if behind != s.behind { behind = s.behind }
         if files != s.files { files = s.files }
         hasHead = s.hasHead
+        watcher.watch(root: s.root, gitDirectories: s.gitDirectories)
+    }
+
+    /// File events arrive coalesced; a busy build can still produce a steady
+    /// stream, so refreshes run at most once per second.
+    private func filesChanged(_ change: GoviRepositoryWatcher.Change) {
+        guard !directory.isEmpty else { return }
+        guard isVisible else { stale = true; return }
+        if change.metadata { metadataRevision += 1 }
+        guard !scheduled else { return }
+        let wait = max(0, 1 - Date().timeIntervalSince(lastRefresh))
+        scheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self else { return }
+            self.scheduled = false
+            self.refresh(self.directory)
+        }
     }
 
     private static func read(_ path: String) -> Snapshot {
         typealias Git = GoviGitRunner
         guard let top = (try? Git.run(path, ["rev-parse", "--show-toplevel"]))?.trimmed.nonEmpty else { return Snapshot() }
         var snapshot = Snapshot(root: top)
+        snapshot.gitDirectories = ((try? Git.run(top, ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"])) ?? "")
+            .split(whereSeparator: \.isNewline).map(String.init)
         snapshot.hasHead = (try? Git.run(top, ["rev-parse", "--verify", "--quiet", "HEAD"])) != nil
         snapshot.branch = (try? Git.run(top, ["symbolic-ref", "--short", "-q", "HEAD"]))?.trimmed.nonEmpty
             ?? (try? Git.run(top, ["rev-parse", "--short", "HEAD"]))?.trimmed.nonEmpty ?? "No commits yet"
@@ -236,14 +234,14 @@ final class GoviGitChanges: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { () throws -> String in
                 if upstream != nil {
-                    try GoviGitRunner.run(top, ["push"], mergeErrors: true)
+                    try GoviGitRunner.run(top, ["push"], mergeErrors: true, timeout: GoviGit.networkTimeout)
                     return "Pushed to \(upstream!)."
                 }
                 let remotes = (try GoviGitRunner.run(top, ["remote"])).split(whereSeparator: \.isNewline).map(String.init)
                 guard let remote = remotes.contains("origin") ? "origin" : remotes.first else {
                     throw NSError(domain: "GoviGit", code: 1, userInfo: [NSLocalizedDescriptionKey: "This repository has no remote to push to."])
                 }
-                try GoviGitRunner.run(top, ["push", "-u", remote, "HEAD"], mergeErrors: true)
+                try GoviGitRunner.run(top, ["push", "-u", remote, "HEAD"], mergeErrors: true, timeout: GoviGit.networkTimeout)
                 return "Pushed and set upstream to \(remote)."
             }
             DispatchQueue.main.async {
@@ -466,7 +464,8 @@ struct GoviGitPanel: View {
     @State private var loadingDiff = false
     @State private var message = ""
     @FocusState private var messageFocused: Bool
-    private let refreshTimer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
+    /// A slow fallback; file events drive normal refreshes.
+    private let refreshTimer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     private var included: [GoviGitChanges.File] { changes.files.filter { !excluded.contains($0.path) } }
     private var selectedFile: GoviGitChanges.File? { changes.files.first { $0.path == selected } }
@@ -497,7 +496,7 @@ struct GoviGitPanel: View {
         .frame(maxWidth: expanded ? .infinity : nil, maxHeight: expanded ? .infinity : nil)
         .modifier(GoviGlassPanel(tint: expanded ? 0.82 : 0.6))
         .onAppear { changes.refresh(directory, force: true); syncSelection() }
-        .onReceive(refreshTimer) { _ in changes.refresh(directory) }
+        .onReceive(refreshTimer) { _ in if changes.isVisible { changes.refresh(directory) } }
         .onChange(of: changes.files) { _ in syncSelection(); loadDiff() }
         .onChange(of: selected) { _ in loadDiff() }
         .onExitCommand(perform: close)

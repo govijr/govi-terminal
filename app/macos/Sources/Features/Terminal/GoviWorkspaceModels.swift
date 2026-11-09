@@ -110,47 +110,6 @@ enum GoviShell {
     static let agentExitStatus = "govi_exit=$?; if [ -n \"$GOVI_NOTIFY\" ]; then if [ \"$govi_exit\" -ne 0 ]; then /bin/zsh -f \"$GOVI_NOTIFY\" error; else /bin/zsh -f \"$GOVI_NOTIFY\" idle; fi; fi; "
 }
 
-/// Bounded subprocess reads for helper discovery and status. Call off the UI
-/// thread. A broken helper cannot block restoration or settings indefinitely.
-enum GoviLocalProcess {
-    struct Result { let status: Int32; let output: String; let timedOut: Bool }
-    static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval = 4, limit: Int = 262_144,
-                    environment: [String: String]? = nil) -> Result? {
-        let process = Process(), pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: executable); process.arguments = arguments
-        if let environment { process.environment = environment }
-        process.standardInput = FileHandle.nullDevice; process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        try? pipe.fileHandleForWriting.close()
-        let fd = pipe.fileHandleForReading.fileDescriptor
-        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
-        defer { try? pipe.fileHandleForReading.close() }
-        let deadline = Date().addingTimeInterval(timeout)
-        var data = Data(), bytes = [UInt8](repeating: 0, count: 8192), timedOut = false
-        func drain() {
-            // Yield back to the deadline check even if a broken startup script
-            // produces output continuously faster than we can consume it.
-            for _ in 0..<32 {
-                let count = Darwin.read(fd, &bytes, bytes.count)
-                guard count > 0 else { break }
-                if data.count < limit { data.append(contentsOf: bytes.prefix(min(count, limit - data.count))) }
-            }
-        }
-        while process.isRunning {
-            drain()
-            if Date() >= deadline { timedOut = true; process.terminate(); break }
-            usleep(10_000)
-        }
-        if timedOut {
-            let grace = Date().addingTimeInterval(0.25)
-            while process.isRunning && Date() < grace { usleep(10_000) }
-            if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
-        }
-        process.waitUntilExit(); drain()
-        return .init(status: process.terminationStatus, output: String(decoding: data, as: UTF8.self), timedOut: timedOut)
-    }
-}
-
 /// Shared with the reconnect regression: the script under test is the script
 /// launched by production panes.
 enum GoviSessionScript {
@@ -250,7 +209,9 @@ enum GoviClaudeHooks {
             if let matcher = value.1 { group["matcher"] = matcher }
             hooks[event] = [group]
         }
-        let data = try! JSONSerialization.data(withJSONObject: ["hooks": hooks], options: [.sortedKeys])
+        // Only strings, numbers and nested containers, so encoding cannot fail;
+        // an empty hook set is the safe fallback all the same.
+        guard let data = try? JSONSerialization.data(withJSONObject: ["hooks": hooks], options: [.sortedKeys]) else { return #"{"hooks":{}}"# }
         return String(decoding: data, as: UTF8.self)
     }
 }

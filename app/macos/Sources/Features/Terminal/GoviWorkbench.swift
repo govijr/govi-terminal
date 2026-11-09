@@ -60,6 +60,7 @@ struct GoviWorkbench<Content: View>: View {
     }
     @AppStorage("GoviGitExpanded") private var gitExpanded = false
     @StateObject private var changes = GoviGitChanges()
+    @StateObject private var visibility = GoviWindowVisibility()
     @State private var collapsedSections: Set<String> = []
     @AppStorage("GoviTheme") private var themeID = "paper"
     @AppStorage("GoviSidebar") private var sidebar = true
@@ -171,7 +172,7 @@ struct GoviWorkbench<Content: View>: View {
                     }
                 }
             if !focusMode {
-                HStack { Spacer(minLength: 0); GoviRepositoryDock(directory: directory, openFolder: openFolder, changes: changes) {
+                HStack { Spacer(minLength: 0); GoviRepositoryDock(directory: directory, openFolder: openFolder, changes: changes, visible: visibility.visible) {
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) { gitOpen.toggle() }
                     } }
                     .frame(height: 42)
@@ -255,7 +256,15 @@ struct GoviWorkbench<Content: View>: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
             if let window = note.object as? NSWindow, window === surface?.window { closeMenus() }
         }
-        .onReceive(sidebarRefresh) { _ in refreshWindows(); detached.refresh(); remote.refresh() }
+        .onReceive(sidebarRefresh) { _ in
+            guard visibility.visible else { return }
+            refreshWindows(); detached.refresh(); remote.refresh()
+        }
+        .background(GoviWindowVisibilityReader(visibility: visibility))
+        .onChange(of: visibility.visible) { visible in
+            changes.isVisible = visible
+            if visible { refreshWindows(); detached.refresh(); remote.refresh() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeMainNotification)) { _ in refreshWindows() }
         .onReceive(NotificationCenter.default.publisher(for: .goviLayoutChanged)) { _ in refreshWindows() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in DispatchQueue.main.async { refreshWindows() } }
@@ -1081,11 +1090,13 @@ private struct GoviRepositoryDock: View {
     let directory: String
     let openFolder: (String) -> Void
     @ObservedObject var changes: GoviGitChanges
+    let visible: Bool
     let showChanges: () -> Void
     @StateObject private var repository = GoviRepository()
     @State private var popover: String?
     @State private var worktreeName = ""
-    private let refresh = Timer.publish(every: 8, on: .main, in: .common).autoconnect()
+    /// A slow fallback; file events (via `changes`) drive normal refreshes.
+    private let refresh = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     var body: some View {
         HStack(spacing: 9) {
             if changes.root != nil {
@@ -1121,7 +1132,9 @@ private struct GoviRepositoryDock: View {
                 for agent in GoviAgent.allCases { usage.refresh(agent) }
             }
             .onChange(of: directory) { repository.refresh($0); changes.refresh($0) }
+            .onChange(of: changes.metadataRevision) { _ in repository.refresh(directory) }
             .onReceive(refresh) { _ in
+                guard visible else { return }
                 changes.refresh(directory)
                 repository.refresh(directory)
                 for agent in GoviAgent.allCases { usage.refresh(agent) }

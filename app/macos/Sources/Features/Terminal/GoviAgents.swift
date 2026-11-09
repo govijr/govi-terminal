@@ -8,6 +8,13 @@ import Darwin
 
 // Provider wire formats and glyphs reference vinzdg/codenotch (MIT).
 // See Govi/Licenses/CodeNotch-LICENSE.txt and Brand/SOURCES.md.
+extension GoviGit {
+    static func defaultBranch(for agent: GoviAgent) -> String {
+        let formatter = DateFormatter(); formatter.dateFormat = "MMdd-HHmm"
+        return "\(agent.rawValue)/\(formatter.string(from: Date()))"
+    }
+}
+
 enum GoviAgent: String, CaseIterable, Identifiable {
     case claude, pi, cursor, grok, codex, opencode
     var id: String { rawValue }
@@ -298,17 +305,25 @@ enum GoviUsageParser {
         let n = (value as? NSNumber)?.doubleValue ?? (value as? String).flatMap(Double.init)
         return n.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
     }
+    // ISO8601DateFormatter is thread-safe and costly to create, so build each once.
+    private static let fractionalDates: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let wholeSecondDates = ISO8601DateFormatter()
+    private static let claudeQuotaLine = try! NSRegularExpression(
+        pattern: #"^Current (session|week \(([^)]+)\)):[ \t]*(\d+(?:\.\d+)?)%[ \t]*used(?:[ \t]*·[ \t]*resets[ \t]+([^\r\n]+))?[ \t]*$"#,
+        options: [.anchorsMatchLines])
+
     static func date(_ value: Any?) -> Date? {
         if let n = number(value), n > 1_000_000_000 { return Date(timeIntervalSince1970: n > 10_000_000_000 ? n / 1000 : n) }
         guard let text = value as? String else { return nil }
-        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: text) ?? ISO8601DateFormatter().date(from: text)
+        return fractionalDates.date(from: text) ?? wholeSecondDates.date(from: text)
     }
     /// Only Claude Code's explicit quota lines count; token/cost statistics are unrelated.
     static func claudeCLI(_ text: String, now: Date = Date()) -> [GoviUsageWindow] {
-        let expression = try! NSRegularExpression(
-            pattern: #"^Current (session|week \(([^)]+)\)):[ \t]*(\d+(?:\.\d+)?)%[ \t]*used(?:[ \t]*·[ \t]*resets[ \t]+([^\r\n]+))?[ \t]*$"#,
-            options: [.anchorsMatchLines])
+        let expression = claudeQuotaLine
         var windows: [GoviUsageWindow] = []
         for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
             func group(_ index: Int) -> String? { Range(match.range(at: index), in: text).map { String(text[$0]) } }
@@ -432,18 +447,6 @@ private enum GoviUsageSource {
         guard status == errSecSuccess, let data = result as? Data else { throw GoviUsageFailure.signIn }
         return data
     }
-    /// Claude Code stores its sign-in with /usr/bin/security, so that tool is on the
-    /// item's access list: reading through it never prompts, even after Claude Code
-    /// rewrites the item or Govi is rebuilt.
-    static func securityTool(_ service: String) -> Data? {
-        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", service, "-w"]
-        let pipe = Pipe(); process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-        guard process.terminationStatus == 0, !data.isEmpty else { return nil }
-        return data
-    }
     static func rows(_ url: URL, sql: String, columns: Int) -> [[String]] {
         var db: OpaquePointer?
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else { if db != nil { sqlite3_close(db) }; return [] }
@@ -465,28 +468,14 @@ private enum GoviUsageSource {
         guard let executable = binary ?? paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }).map({ URL(fileURLWithPath: $0) }) else { return nil }
         let scratch = directory ?? FileManager.default.temporaryDirectory.appendingPathComponent("govi-claude-usage", isDirectory: true)
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        let process = Process(); process.executableURL = executable; process.currentDirectoryURL = scratch
         // The -- separator keeps /usage out of the variadic --tools argument.
         // No project settings, hooks, MCP servers, tools, or saved conversation.
-        process.arguments = ["--print", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
-                             "--settings", #"{"disableAllHooks":true}"#, "--tools", "", "--", "/usage"]
-        process.standardInput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
-        let pipe = Pipe(); process.standardOutput = pipe
-        guard (try? process.run()) != nil else { return nil }
-        let watchdog = DispatchWorkItem {
-            if process.isRunning {
-                process.terminate()
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
-                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-                }
-            }
-        }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 20, execute: watchdog)
-        defer { watchdog.cancel() }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self)
+        let arguments = ["--print", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
+                         "--settings", #"{"disableAllHooks":true}"#, "--tools", "", "--", "/usage"]
+        guard let result = GoviLocalProcess.run(executable.path, arguments, timeout: 20, directory: scratch.path) else { return nil }
+        let text = result.output
         let windows = GoviUsageParser.claudeCLI(text)
-        if process.terminationStatus == 0, !windows.isEmpty { return windows }
+        if result.status == 0, !result.timedOut, !windows.isEmpty { return windows }
         if text.localizedCaseInsensitiveContains("rate limit") || text.contains("429") { throw GoviUsageFailure.rateLimited(300) }
         return nil
     }
@@ -500,13 +489,13 @@ private enum GoviUsageSource {
                 let suffix = SHA256.hash(data: Data(folder.path.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8)
                 let isDefault = folder.standardizedFileURL == home.appendingPathComponent(".claude").standardizedFileURL
                 let services = ["Claude Code-credentials-" + suffix] + (isDefault ? ["Claude Code-credentials"] : [])
-                data = services.lazy.compactMap { securityTool($0).flatMap(json) }.first
-                if data == nil {
-                    do { data = json(try keychain(services[0], interactive: interactive)) }
-                    catch GoviUsageFailure.signIn {
-                        guard isDefault else { throw GoviUsageFailure.signIn }
-                        data = json(try keychain("Claude Code-credentials", interactive: interactive))
-                    }
+                // Read through the Keychain API only, so macOS asks the user before
+                // Govi can see another app's sign-in. Background refreshes never
+                // prompt; they surface "Click to connect" instead.
+                do { data = json(try keychain(services[0], interactive: interactive)) }
+                catch GoviUsageFailure.signIn {
+                    guard isDefault else { throw GoviUsageFailure.signIn }
+                    data = json(try keychain("Claude Code-credentials", interactive: interactive))
                 }
             }
             let stored = data ?? [:]

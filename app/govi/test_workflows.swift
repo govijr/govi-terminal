@@ -34,6 +34,33 @@ import Foundation
         precondition(noisy?.timedOut == true && noisy!.output.utf8.count <= 262_144 && Date().timeIntervalSince(noisyStart) < 2)
         let output = GoviLocalProcess.run("/usr/bin/printf", ["%s", "a'b;$(literal)"])
         precondition(output?.status == 0 && output?.output == "a'b;$(literal)")
+        let split = GoviLocalProcess.run("/bin/sh", ["-c", "printf out; printf err >&2; exit 3"], errors: .separate)
+        precondition(split?.status == 3 && split?.output == "out" && split?.errors == "err")
+        let merged = GoviLocalProcess.run("/bin/sh", ["-c", "printf out; printf err >&2"], errors: .merge)
+        precondition(merged?.output.contains("out") == true && merged?.output.contains("err") == true && merged?.errors == "")
+        let discarded = GoviLocalProcess.run("/bin/sh", ["-c", "printf err >&2"])
+        precondition(discarded?.output == "" && discarded?.errors == "")
+        let scratchDirectory = String(cString: realpath(FileManager.default.temporaryDirectory.path, nil)!)
+        precondition(GoviLocalProcess.run("/bin/pwd", ["-P"], directory: scratchDirectory)?.output
+            .trimmingCharacters(in: .whitespacesAndNewlines) == scratchDirectory)
+        let cancellation = GoviLocalProcess.Cancellation()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { cancellation.cancel() }
+        let cancelStart = Date()
+        let cancelled = GoviLocalProcess.run("/bin/sleep", ["10"], timeout: 30, cancellation: cancellation)
+        precondition(cancelled?.cancelled == true && cancelled?.timedOut == false && Date().timeIntervalSince(cancelStart) < 2)
+        precondition(GoviLocalProcess.run("/nonexistent/tool", []) == nil)
+        // Git wrappers: trimmed values, untrimmed porcelain, and git's own message on failure.
+        let repository = FileManager.default.temporaryDirectory.appendingPathComponent("govi-git-\(UUID().uuidString)").path
+        try! FileManager.default.createDirectory(atPath: repository, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: repository) }
+        try! GoviGit.run(repository, ["init", "-q"])
+        precondition(GoviGit.topLevel(repository).map { String(cString: realpath($0, nil)!) }
+            == String(cString: realpath(repository, nil)!))
+        try! "x".write(toFile: repository + "/é.txt", atomically: true, encoding: .utf8)
+        precondition(try! GoviGitRunner.run(repository, ["status", "--porcelain"]) == "?? é.txt\n")
+        do { _ = try GoviGit.run(repository, ["rev-parse", "--verify", "no-such-ref"]); preconditionFailure("expected failure") }
+        catch { precondition((error as NSError).domain == "GoviGit" && !error.localizedDescription.isEmpty) }
+        precondition(GoviGit.topLevel("/") == nil)
         let date = Date(timeIntervalSince1970: 1000)
         var activity = GoviReportedActivity()
         activity.receive(.working, now: date)

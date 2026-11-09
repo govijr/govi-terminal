@@ -21,7 +21,7 @@ import uuid
 root = Path(__file__).resolve().parent.parent
 out = root / '.build/recovery-tests'
 out.mkdir(parents=True, exist_ok=True)
-subprocess.run(['swiftc', '-module-cache-path', str(out / 'modules'), str(root / 'macos/Sources/Features/Terminal/GoviWorkspaceModels.swift'), str(root / 'govi/test_recovery.swift'), '-o', str(out / 'fixture')], check=True)
+subprocess.run(['swiftc', '-module-cache-path', str(out / 'modules'), str(root / 'macos/Sources/Features/Terminal/GoviWorkspaceModels.swift'), str(root / 'macos/Sources/Features/Terminal/GoviProcess.swift'), str(root / 'macos/Sources/Features/Terminal/GoviRemoteModels.swift'), str(root / 'govi/test_recovery.swift'), '-o', str(out / 'fixture')], check=True)
 hc = shutil.which('hc') or str(Path.home() / '.local/bin/hc')
 assert Path(hc).is_file(), 'Install herdr-core to run the live reconnect regression.'
 packets = queue.Queue()

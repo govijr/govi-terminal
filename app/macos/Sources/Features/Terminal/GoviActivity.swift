@@ -345,54 +345,6 @@ struct GoviActivityBadge: View {
     }
 }
 
-/// Runs git with an argument array (no shell evaluation) and no prompts.
-enum GoviGit {
-    static func run(_ directory: String, _ arguments: [String]) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", directory] + arguments
-        var environment = ProcessInfo.processInfo.environment
-        environment["GIT_TERMINAL_PROMPT"] = "0"
-        process.environment = environment
-        let pipe = Pipe(); process.standardOutput = pipe; process.standardError = pipe
-        try process.run()
-        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw NSError(domain: "GoviGit", code: Int(process.terminationStatus),
-                          userInfo: [NSLocalizedDescriptionKey: output.trimmingCharacters(in: .whitespacesAndNewlines)])
-        }
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// The repository root containing `directory`, if any.
-    static func topLevel(_ directory: String) -> String? {
-        try? run(directory, ["rev-parse", "--show-toplevel"])
-    }
-
-    /// Creates a branch and worktree next to the repository, at
-    /// `<parent>/<repo>.worktrees/<branch>`, based on the current HEAD.
-    static func createWorktree(repository top: String, branch: String) throws -> String {
-        _ = try run(top, ["check-ref-format", "--branch", branch])
-        let repo = URL(fileURLWithPath: top)
-        let folder = repo.deletingLastPathComponent().appendingPathComponent(repo.lastPathComponent + ".worktrees")
-        let slug = branch.replacingOccurrences(of: "/", with: "-")
-        var path = folder.appendingPathComponent(slug).path
-        var suffix = 2
-        while FileManager.default.fileExists(atPath: path) {
-            path = folder.appendingPathComponent("\(slug)-\(suffix)").path; suffix += 1
-        }
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        _ = try run(top, ["worktree", "add", "-b", branch, "--", path])
-        return path
-    }
-
-    static func defaultBranch(for agent: GoviAgent) -> String {
-        let formatter = DateFormatter(); formatter.dateFormat = "MMdd-HHmm"
-        return "\(agent.rawValue)/\(formatter.string(from: Date()))"
-    }
-}
-
 struct GoviActivitySettingsView: View {
     @Environment(\.goviPalette) private var ui
     @AppStorage(GoviActivityPreferences.notifyKey) private var notify = true

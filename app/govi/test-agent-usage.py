@@ -94,5 +94,5 @@ print('Current week (all models): 39% used · resets Nov 10 at 3:59pm (America/N
 ''')
 fake.chmod(0o755)
 (out/'main.swift').write_text('import Foundation\nimport SwiftUI\nimport Security\nimport SQLite3\nimport CryptoKit\nimport LocalAuthentication\nimport Darwin\n'+agent+'\n'+usage+'\n@main struct UsageChecks { @MainActor static func main() {\n'+tests+'\n} }\n')
-subprocess.run(['swiftc','-parse-as-library','-module-cache-path',str(out/'modules'),str(out/'main.swift'),str(root/'macos/Sources/Features/Terminal/GoviWorkspaceModels.swift'),'-o',str(out/'check')],check=True)
+subprocess.run(['swiftc','-parse-as-library','-module-cache-path',str(out/'modules'),str(out/'main.swift'),str(root/'macos/Sources/Features/Terminal/GoviWorkspaceModels.swift'),str(root/'macos/Sources/Features/Terminal/GoviProcess.swift'),str(root/'macos/Sources/Features/Terminal/GoviRemoteModels.swift'),'-o',str(out/'check')],check=True)
 subprocess.run([str(out/'check'),str(out)],check=True)

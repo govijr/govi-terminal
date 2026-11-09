@@ -14,6 +14,8 @@
 		607777777777777777777703 /* GoviShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607777777777777777777803; };
 		607777777777777777777702 /* GoviWorkspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607777777777777777777802; };
 		607777777777777777777701 /* GoviWorkspaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607777777777777777777801; };
+		A11DE4157D23ECBBB931E992 /* GoviLiveRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21DE4157D23ECBBB931E992; };
+		A1277A8E8BE4BAC8ACC16B3A /* GoviProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2277A8E8BE4BAC8ACC16B3A; };
 		608888888888888888888801 /* GoviRemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608888888888888888888811; };
 		608888888888888888888802 /* GoviRemote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608888888888888888888812; };
 		604444444444444444444401 /* GoviAgents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604444444444444444444402; };
@@ -134,6 +136,8 @@
 		607777777777777777777803 /* GoviShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviShortcuts.swift; sourceTree = "<group>"; };
 		607777777777777777777802 /* GoviWorkspaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviWorkspaces.swift; sourceTree = "<group>"; };
 		607777777777777777777801 /* GoviWorkspaceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviWorkspaceModels.swift; sourceTree = "<group>"; };
+		A21DE4157D23ECBBB931E992 /* GoviLiveRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviLiveRefresh.swift; sourceTree = "<group>"; };
+		A2277A8E8BE4BAC8ACC16B3A /* GoviProcess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviProcess.swift; sourceTree = "<group>"; };
 		608888888888888888888811 /* GoviRemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviRemoteModels.swift; sourceTree = "<group>"; };
 		608888888888888888888812 /* GoviRemote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviRemote.swift; sourceTree = "<group>"; };
 		604444444444444444444402 /* GoviAgents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviAgents.swift; sourceTree = "<group>"; };
@@ -489,6 +493,8 @@
 				607777777777777777777803 /* GoviShortcuts.swift */,
 				607777777777777777777802 /* GoviWorkspaces.swift */,
 				607777777777777777777801 /* GoviWorkspaceModels.swift */,
+				A21DE4157D23ECBBB931E992 /* GoviLiveRefresh.swift */,
+				A2277A8E8BE4BAC8ACC16B3A /* GoviProcess.swift */,
 				608888888888888888888811 /* GoviRemoteModels.swift */,
 				608888888888888888888812 /* GoviRemote.swift */,
 				609999999999999999999914 /* GoviTasksView.swift */,
@@ -762,6 +768,8 @@
 				607777777777777777777703 /* GoviShortcuts.swift in Sources */,
 				607777777777777777777702 /* GoviWorkspaces.swift in Sources */,
 				607777777777777777777701 /* GoviWorkspaceModels.swift in Sources */,
+				A11DE4157D23ECBBB931E992 /* GoviLiveRefresh.swift in Sources */,
+				A1277A8E8BE4BAC8ACC16B3A /* GoviProcess.swift in Sources */,
 				608888888888888888888801 /* GoviRemoteModels.swift in Sources */,
 				608888888888888888888802 /* GoviRemote.swift in Sources */,
 				609999999999999999999904 /* GoviTasksView.swift in Sources */,
