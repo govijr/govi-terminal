@@ -1028,7 +1028,7 @@ extension Ghostty {
                     // Check if a split actually exists in the target direction before
                     // returning true. This ensures performable keybinds only consume
                     // the key event when we actually perform navigation.
-                    let focusDirection: SplitTree<Ghostty.SurfaceView>.FocusDirection = splitDirection.toSplitTreeFocusDirection()
+                    let focusDirection: SplitTree<GoviPaneView>.FocusDirection = splitDirection.toSplitTreeFocusDirection()
                     guard controller.surfaceTree.focusTarget(for: focusDirection, from: targetNode) != nil else {
                         return false
                     }

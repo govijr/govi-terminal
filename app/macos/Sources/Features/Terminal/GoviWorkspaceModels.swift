@@ -43,32 +43,91 @@ struct GoviPaneRecord: Codable, Equatable, Identifiable {
     var persistentName: String?
 }
 
+/// A browser pane. Only the address and title are kept: page content, cookies
+/// and history are not, and only http, https and file addresses are written.
+struct GoviWebPaneRecord: Codable, Equatable, Identifiable {
+    static let maxURLLength = 8192
+    var id: UUID
+    /// Empty for a browser that never loaded a page.
+    var url: String
+    var title: String
+
+    static func isAllowed(_ url: URL) -> Bool {
+        guard url.absoluteString.utf8.count <= maxURLLength, let scheme = url.scheme?.lowercased() else { return false }
+        return ["http", "https", "file"].contains(scheme) && (scheme == "file" || url.host != nil)
+    }
+
+    var isValid: Bool {
+        guard title.utf8.count < 4096 else { return false }
+        return url.isEmpty || URL(string: url).map(Self.isAllowed) == true
+    }
+}
+
 indirect enum GoviWorkspaceLayout: Codable, Equatable {
     case terminal(GoviPaneRecord)
+    case web(GoviWebPaneRecord)
     case split(vertical: Bool, ratio: Double, first: GoviWorkspaceLayout, second: GoviWorkspaceLayout)
 
+    /// Terminal panes, in layout order.
     var panes: [GoviPaneRecord] {
         switch self {
         case .terminal(let pane): return [pane]
+        case .web: return []
         case .split(_, _, let first, let second): return first.panes + second.panes
         }
     }
 
+    /// Browser panes, in layout order.
+    var webPanes: [GoviWebPaneRecord] {
+        switch self {
+        case .terminal: return []
+        case .web(let pane): return [pane]
+        case .split(_, _, let first, let second): return first.webPanes + second.webPanes
+        }
+    }
+
+    /// Every pane's ID, terminals and browsers alike.
+    var paneIDs: [UUID] {
+        switch self {
+        case .terminal(let pane): return [pane.id]
+        case .web(let pane): return [pane.id]
+        case .split(_, _, let first, let second): return first.paneIDs + second.paneIDs
+        }
+    }
+
+    /// Transforms terminal panes; browser panes pass through unchanged.
     func replacingPanes(_ transform: (GoviPaneRecord) -> GoviPaneRecord) -> Self {
         switch self {
         case .terminal(let pane): return .terminal(transform(pane))
+        case .web: return self
         case .split(let vertical, let ratio, let first, let second):
             return .split(
                 vertical: vertical, ratio: ratio, first: first.replacingPanes(transform), second: second.replacingPanes(transform))
         }
     }
 
-    var isValid: Bool { validate(depth: 0) && !panes.isEmpty && panes.count <= 64 && Set(panes.map(\.id)).count == panes.count }
+    func replacingWebPanes(_ transform: (GoviWebPaneRecord) -> GoviWebPaneRecord) -> Self {
+        switch self {
+        case .terminal: return self
+        case .web(let pane): return .web(transform(pane))
+        case .split(let vertical, let ratio, let first, let second):
+            return .split(
+                vertical: vertical, ratio: ratio, first: first.replacingWebPanes(transform),
+                second: second.replacingWebPanes(transform))
+        }
+    }
+
+    var isValid: Bool {
+        let ids = paneIDs
+        return validate(depth: 0) && !ids.isEmpty && ids.count <= 64 && Set(ids).count == ids.count
+    }
     private func validate(depth: Int) -> Bool {
         guard depth < 32 else { return false }
         switch self {
         case .terminal(let pane):
             return pane.directory.hasPrefix("/") && !pane.directory.contains("\0") && pane.directory.utf8.count < 4096
+        case .web(let pane):
+            return pane.isValid
         case .split(_, let ratio, let first, let second):
             return ratio.isFinite && ratio >= 0.05 && ratio <= 0.95 && first.validate(depth: depth + 1) && second.validate(depth: depth + 1)
         }
@@ -80,6 +139,10 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
             var copy = pane
             copy.id = UUID()
             copy.persistentName = nil
+            return copy
+        }.replacingWebPanes { pane in
+            var copy = pane
+            copy.id = UUID()
             return copy
         }
     }
@@ -95,12 +158,15 @@ struct GoviWorkspaceRecord: Codable, Equatable, Identifiable {
 }
 
 struct GoviRecoveryCheckpoint: Codable, Equatable {
-    var version = 1
+    /// Version 2 adds browser panes. Version 1 checkpoints (terminals only)
+    /// still load; an older Govi rejects version 2 rather than misreading it.
+    static let currentVersion = 2
+    var version = Self.currentVersion
     var savedAt = Date()
     var workspaces: [GoviWorkspaceRecord]
     var isValid: Bool {
-        version == 1 && workspaces.count <= 64 && workspaces.allSatisfy { $0.layout.isValid }
-            && Set(workspaces.flatMap { $0.layout.panes.map(\.id) }).count == workspaces.reduce(0) { $0 + $1.layout.panes.count }
+        (1...Self.currentVersion).contains(version) && workspaces.count <= 64 && workspaces.allSatisfy { $0.layout.isValid }
+            && Set(workspaces.flatMap(\.layout.paneIDs)).count == workspaces.reduce(0) { $0 + $1.layout.paneIDs.count }
     }
 }
 
@@ -273,7 +339,7 @@ struct GoviKeyChord: Codable, Hashable {
 
 enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
     case newWorkspace, newWindow, closeTerminal, splitRight, splitDown, zoom, left, right, up, down, palette
-    case find, search, settings, focusMode, sidebar, attention, nextAttention, templates, remoteHosts
+    case find, search, settings, focusMode, sidebar, attention, nextAttention, templates, remoteHosts, browser
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -297,6 +363,7 @@ enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .nextAttention: "Next terminal needing attention"
         case .templates: "Project templates"
         case .remoteHosts: "Remote hosts"
+        case .browser: "Open browser pane"
         }
     }
     var defaultChord: GoviKeyChord {
@@ -322,6 +389,7 @@ enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
             case .nextAttention: ("j", 10)
             case .templates: ("t", 10)
             case .remoteHosts: ("r", 12)
+            case .browser: ("b", 12)
             }
         return .init(key: pair.0, modifiers: pair.1)
     }

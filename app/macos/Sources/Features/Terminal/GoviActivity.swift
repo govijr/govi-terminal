@@ -148,7 +148,7 @@ enum GoviActivityPreferences {
     }
 
     func receive(_ signal: GoviActivitySignal) {
-        guard let owner = GoviPaneCoordinator.owner(of: signal.id), let surface = owner.surfaceTree.first(where: { $0.id == signal.id })
+        guard let owner = GoviPaneCoordinator.owner(of: signal.id), let surface = owner.surfaceTree.surfaces.first(where: { $0.id == signal.id })
         else { return }
         track(surface)
         guard let entry = entries[signal.id] else { return }

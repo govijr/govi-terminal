@@ -2,7 +2,10 @@ import AppKit
 
 /// Native split model regression: moving terminals must preserve the actual
 /// view instances (and thus the processes they own), even through nested splits.
-final class TestPane: NSView, Codable, Identifiable {
+final class TestPane: NSView, Codable, Identifiable, SplitTreeLeaf {
+    static func decodeLeaf(from decoder: Decoder) throws -> TestPane { try TestPane(from: decoder) }
+    func encodeLeaf(to encoder: Encoder) throws { try encode(to: encoder) }
+
     let id: Int
     init(_ id: Int) {
         self.id = id
@@ -151,6 +154,47 @@ final class TestPane: NSView, Codable, Identifiable {
         precondition(GoviSnapZone.at(.zero, size: .zero) == .center)
         let selfDock = try single.docking(view: panes[0], to: panes[0], zone: .left)
         precondition(selfDock.structuralIdentity == single.structuralIdentity)
+        // Leaves of different kinds share a base class (as terminal and browser
+        // panes share GoviPaneView) and round-trip with their own subclasses.
+        let terminal = KindTerminal(0), browser = KindBrowser(7)
+        let kinds = try SplitTree<KindPane>(view: terminal).insert(view: browser, at: terminal, direction: .right)
+        let decodedKinds = try JSONDecoder().decode(SplitTree<KindPane>.self, from: JSONEncoder().encode(kinds))
+        precondition(decodedKinds.map { "\(type(of: $0))" } == ["KindTerminal", "KindBrowser"])
+        precondition(decodedKinds.map(\.id) == [0, 7])
+        let browserFirst = try kinds.docking(view: browser, to: terminal, zone: .left)
+        precondition(browserFirst.map(\.id) == [7, 0] && browserFirst.first === browser)
+        // A tree written before pane kinds existed decodes as terminals.
+        let legacyKinds = try JSONDecoder().decode(SplitTree<KindPane>.self, from: JSONEncoder().encode(tree))
+        precondition(legacyKinds.allSatisfy { $0 is KindTerminal } && legacyKinds.count == panes.count)
+        checks += 3
         print("Passed \(checks + 3) pane movement/docking checks; live views and pane-local geometry preserved.")
     }
 }
+
+/// Mirrors GoviPaneView: a base class whose decodeLeaf picks the subclass
+/// from `kind`, with legacy leaves (no kind) decoding as terminals.
+class KindPane: NSView, Identifiable, SplitTreeLeaf {
+    enum Keys: String, CodingKey { case kind, id }
+    let id: Int
+    var kind: String { "terminal" }
+    init(_ id: Int) {
+        self.id = id
+        super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func encodeLeaf(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: Keys.self)
+        if kind != "terminal" { try container.encode(kind, forKey: .kind) }
+        try container.encode(id, forKey: .id)
+    }
+    class func decodeLeaf(from decoder: Decoder) throws -> Self {
+        // TestPane encodes a bare Int: the legacy, kind-less shape.
+        if let id = try? decoder.singleValueContainer().decode(Int.self) { return KindTerminal(id) as! Self }
+        let container = try decoder.container(keyedBy: Keys.self)
+        let id = try container.decode(Int.self, forKey: .id)
+        let pane: KindPane = try container.decodeIfPresent(String.self, forKey: .kind) == "browser" ? KindBrowser(id) : KindTerminal(id)
+        return pane as! Self
+    }
+}
+final class KindTerminal: KindPane {}
+final class KindBrowser: KindPane { override var kind: String { "browser" } }

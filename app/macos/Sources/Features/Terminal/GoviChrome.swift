@@ -71,8 +71,8 @@ final class GoviNavigation: ObservableObject {
         else { return }
         window.tabGroup?.selectedWindow = window
         window.makeKeyAndOrderFront(nil)
-        owner.focusedSurface = view
-        window.makeFirstResponder(view)
+        owner.focusedPane = view
+        window.makeFirstResponder(view.paneFocusTarget)
     }
 }
 

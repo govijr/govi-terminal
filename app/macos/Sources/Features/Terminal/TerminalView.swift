@@ -18,7 +18,7 @@ protocol TerminalViewDelegate: AnyObject {
     func performAction(_ action: String, on: Ghostty.SurfaceView)
 
     /// A split is resizing to a given value.
-    func splitDidResize(node: SplitTree<Ghostty.SurfaceView>.Node, to newRatio: Double)
+    func splitDidResize(node: SplitTree<GoviPaneView>.Node, to newRatio: Double)
 }
 
 /// The view model is a required implementation for TerminalView callers. This contains
@@ -27,7 +27,7 @@ protocol TerminalViewDelegate: AnyObject {
 protocol TerminalViewModel: ObservableObject {
     /// The tree of terminal surfaces (splits) within the view. This is mutated by TerminalView
     /// and children. This should be @Published.
-    var surfaceTree: SplitTree<Ghostty.SurfaceView> { get set }
+    var surfaceTree: SplitTree<GoviPaneView> { get set }
 
     /// The command palette state.
     var commandPaletteIsShowing: Bool { get set }
@@ -78,7 +78,7 @@ struct TerminalView<ViewModel: TerminalViewModel>: View {
 
                     GoviWorkbench(
                         ghostty: ghostty,
-                        surface: lastFocusedSurface.value ?? viewModel.surfaceTree.root?.leaves().first,
+                        surface: lastFocusedSurface.value ?? viewModel.surfaceTree.surfaces.first,
                         pwd: surfacePwd,
                         tree: viewModel.surfaceTree,
                         showPalette: { viewModel.commandPaletteIsShowing.toggle() }

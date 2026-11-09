@@ -571,8 +571,8 @@ extension Ghostty {
     /// figure it out so we're going to do this hacky thing to bring focus back to the terminal
     /// that should have it.
     static func moveFocus(
-        to: SurfaceView,
-        from: SurfaceView? = nil,
+        to: GoviPaneView,
+        from: GoviPaneView? = nil,
         delay: TimeInterval? = nil
     ) {
         // The whole delay machinery is a bit of a hack to work around a
@@ -609,7 +609,7 @@ extension Ghostty {
                 _ = from.resignFirstResponder()
             }
 
-            window.makeFirstResponder(to)
+            window.makeFirstResponder(to.paneFocusTarget)
         }
 
         let queue = DispatchQueue.main

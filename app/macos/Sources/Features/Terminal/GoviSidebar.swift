@@ -225,3 +225,67 @@ struct GoviSidebarTasksTab: View {
             .contextMenu { Button("Close Tasks", action: close) }
     }
 }
+
+/// A browser pane in the sidebar, styled like the terminal rows above it.
+struct GoviSidebarBrowser: View {
+    @Environment(\.goviPalette) private var ui
+    @ObservedObject var pane: GoviWebPaneView
+    @State private var hovering = false
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    Image(systemName: "globe").font(.system(size: 11)).foregroundStyle(ui.accent)
+                        .frame(width: GoviSidebarMetrics.icon, height: GoviSidebarMetrics.icon)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(pane.paneTitle).lineLimit(1).truncationMode(.middle)
+                        if let host = pane.url?.host {
+                            Text(host + (pane.url?.port.map { ":\($0)" } ?? ""))
+                                .font(GoviInk.font(10.5)).foregroundStyle(ui.muted).lineLimit(1).truncationMode(.middle)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if pane.isLoading { ProgressView().controlSize(.mini) }
+                }.padding(.vertical, 5).padding(.trailing, 4).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+                .help("\(pane.url?.absoluteString ?? "Browser")\nDrag to move this pane")
+                .onDrag { GoviPaneCoordinator.dragProvider(for: pane) }
+            Button {
+                command(.closeTerminal)
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9.5, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
+            }.buttonStyle(.plain).help("Close browser").accessibilityLabel("Close browser")
+                .opacity(hovering ? 1 : 0)
+        }.font(GoviInk.font(12.5).weight(.light))
+            .foregroundStyle(active ? ui.ink : ui.muted)
+            .padding(.horizontal, GoviSidebarMetrics.inset)
+            .frame(minHeight: GoviSidebarMetrics.row)
+            .background(
+                active ? ui.ink.opacity(0.10) : ui.ink.opacity(hovering ? 0.05 : 0),
+                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+            )
+            .overlay(alignment: .leading) {
+                if active { Capsule().fill(ui.accent).frame(width: 2.5, height: 16).offset(x: -1) }
+            }
+            .contentShape(Rectangle()).onHover { hovering = $0 }
+            .contextMenu {
+                Button("Split right") { command(.splitRight) }
+                Button("Split below") { command(.splitDown) }
+                Button("Maximize / restore pane") { command(.zoom) }
+                Button("Reload") { pane.reload() }
+                if let url = pane.url, url.scheme == "http" || url.scheme == "https" {
+                    Button("Open in default browser") { NSWorkspace.shared.open(url) }
+                }
+                Divider()
+                Button("Close browser") { command(.closeTerminal) }
+            }
+            .accessibilityElement(children: .combine).accessibilityLabel("Browser: \(pane.paneTitle)")
+    }
+
+    private func command(_ action: GoviShortcutAction) {
+        (pane.window?.windowController as? BaseTerminalController)?.performPaneCommand(action, on: pane)
+    }
+}

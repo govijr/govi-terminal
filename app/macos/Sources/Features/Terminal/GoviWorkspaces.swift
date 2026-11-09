@@ -72,9 +72,15 @@ import GhosttyKit
 
     func capture(_ controller: TerminalController, group: Int = 0, forRecovery: Bool = false) -> GoviWorkspaceRecord? {
         guard let root = controller.surfaceTree.root else { return nil }
-        func captureNode(_ node: SplitTree<Ghostty.SurfaceView>.Node) -> GoviWorkspaceLayout {
+        func captureNode(_ node: SplitTree<GoviPaneView>.Node) -> GoviWorkspaceLayout {
             switch node {
-            case .leaf(let pane):
+            case .leaf(let leaf):
+                if let web = leaf as? GoviWebPaneView {
+                    return .web(.init(id: web.id, url: web.url.map(\.absoluteString) ?? "", title: web.pageTitle))
+                }
+                guard let pane = leaf as? Ghostty.SurfaceView else {
+                    preconditionFailure("Unknown pane kind \(leaf.paneKind) in workspace capture")
+                }
                 var launch = pane.goviLaunch
                 if forRecovery { launch.command = nil }
                 return .terminal(
@@ -92,7 +98,7 @@ import GhosttyKit
         let layout = captureNode(root)
         let name = controller.goviName ?? URL(fileURLWithPath: layout.panes.first?.directory ?? "").lastPathComponent
         return .init(
-            id: controller.goviID, name: name, layout: layout, focusedPane: controller.focusedSurface?.id,
+            id: controller.goviID, name: name, layout: layout, focusedPane: controller.focusedPane?.id,
             group: group, frame: [frame.origin.x, frame.origin.y, frame.width, frame.height])
     }
 
@@ -142,7 +148,7 @@ import GhosttyKit
         _ saved: GoviWorkspaceRecord, ghostty: Ghostty.App, parent: NSWindow?, runCommands: Bool
     ) -> TerminalController? {
         guard saved.layout.isValid, let app = ghostty.app else { return nil }
-        func build(_ node: GoviWorkspaceLayout) -> SplitTree<Ghostty.SurfaceView>.Node {
+        func build(_ node: GoviWorkspaceLayout) -> SplitTree<GoviPaneView>.Node {
             switch node {
             case .terminal(let record):
                 var config = Ghostty.SurfaceConfiguration()
@@ -162,6 +168,9 @@ import GhosttyKit
                 GoviActivityCenter.shared.tag(
                     pane, agent: record.launch.agent.flatMap(GoviAgent.init(rawValue:)), label: record.launch.task)
                 return .leaf(view: pane)
+            case .web(let record):
+                let url = URL(string: record.url).flatMap { GoviWebPaneRecord.isAllowed($0) ? $0 : nil }
+                return .leaf(view: GoviWebPaneView(id: record.id, url: url, title: record.title))
             case .split(let vertical, let ratio, let first, let second):
                 return .split(.init(direction: vertical ? .vertical : .horizontal, ratio: ratio, left: build(first), right: build(second)))
             }
@@ -176,10 +185,18 @@ import GhosttyKit
             let proposed = NSRect(x: saved.frame[0], y: saved.frame[1], width: saved.frame[2], height: saved.frame[3])
             if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(proposed) }) { window.setFrame(proposed, display: false) }
         }
-        if let id = saved.focusedPane, let pane = controller.surfaceTree.first(where: { $0.id == id }) { controller.focusedSurface = pane }
+        if let id = saved.focusedPane, let pane = controller.surfaceTree.first(where: { $0.id == id }) { controller.focusedPane = pane }
         controller.showWindow(nil)
         window.makeKeyAndOrderFront(nil)
-        DispatchQueue.main.async { window.makeFirstResponder(controller.focusedSurface ?? controller.surfaceTree.first) }
+        DispatchQueue.main.async { window.makeFirstResponder((controller.focusedPane ?? controller.surfaceTree.first)?.paneFocusTarget) }
+        // SwiftUI focuses the first terminal as the split view appears, after the
+        // call above. Re-apply a restored non-terminal pane's focus once it settles.
+        if let pane = controller.focusedPane, !(pane is Ghostty.SurfaceView) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak controller] in
+                guard let controller, controller.surfaceTree.contains(pane) else { return }
+                Ghostty.moveFocus(to: pane, from: controller.focusedSurface)
+            }
+        }
         return controller
     }
 
@@ -217,7 +234,7 @@ import GhosttyKit
             GoviShell.quote(shell) + " -lic "
             + GoviShell.quote(command + "; " + GoviShell.agentExitStatus + "exec " + GoviShell.quote(shell) + " -l")
         if let controller = TerminalController.newTab(owner.ghostty, from: surface.window, withBaseConfig: config),
-            let pane = controller.surfaceTree.first
+            let pane = controller.surfaceTree.surfaces.first
         {
             GoviActivityCenter.shared.tag(pane, agent: agent, label: surface.goviLaunch.task)
             surface.goviRecovered = false

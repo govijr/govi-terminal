@@ -45,11 +45,13 @@ struct TerminalCommandPaletteView: View {
             }
             let navigation = TerminalController.all.flatMap { controller in
                 controller.surfaceTree.map { pane in
-                    CommandOption(title: "Terminal: \(GoviPaneNaming.title(pane))", description: pane.pwd ?? "", symbols: nil) {
+                    let kind = pane is Ghostty.SurfaceView ? "Terminal" : "Browser"
+                    let detail = (pane as? GoviWebPaneView)?.url?.absoluteString ?? pane.paneDirectory ?? ""
+                    return CommandOption(title: "\(kind): \(GoviPaneNaming.title(pane))", description: detail, symbols: nil) {
                         controller.window?.tabGroup?.selectedWindow = controller.window
                         controller.window?.makeKeyAndOrderFront(nil)
-                        controller.focusedSurface = pane
-                        DispatchQueue.main.async { controller.window?.makeFirstResponder(pane) }
+                        controller.focusedPane = pane
+                        DispatchQueue.main.async { controller.window?.makeFirstResponder(pane.paneFocusTarget) }
                     }
                 }
             }
@@ -59,6 +61,9 @@ struct TerminalCommandPaletteView: View {
                     var config = Ghostty.SurfaceConfiguration(); config.workingDirectory = project.path
                     _ = TerminalController.newTab(controller.ghostty, from: surfaceView.window, withBaseConfig: config)
                 }
+            }
+            let browser = CommandOption(title: "Open Browser Pane", description: "Open a web page, such as your dev server, in a split beside this pane.", symbols: shortcuts.chord(.browser).symbols) {
+                GoviPaneCoordinator.owner(of: surfaceView.id)?.openWebPane()
             }
             let focus = CommandOption(title: "Toggle Focus Mode", description: "Hide or restore the sidebar and dock.", symbols: nil) {
                 NotificationCenter.default.post(name: .goviToggleFocus, object: nil)
@@ -86,7 +91,7 @@ struct TerminalCommandPaletteView: View {
             let tasks = CommandOption(title: "Tasks — GitHub and Linear", description: "Start from an issue, review pull requests, and share results.", symbols: nil) {
                 NotificationCenter.default.post(name: .goviTasks, object: nil)
             }
-            return [find, tasks, attention, nextAttention, focus, sidebar, settings, templates, saveTemplate] + tools + navigation + projects + saved + builtins
+            return [find, tasks, attention, nextAttention, browser, focus, sidebar, settings, templates, saveTemplate] + tools + navigation + projects + saved + builtins
         } catch {
             return []
         }

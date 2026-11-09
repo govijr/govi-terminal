@@ -254,6 +254,10 @@ struct GoviAgentMenu: View {
                     connect(target)
                 }
             }
+            GoviMenuRow(title: "Browser", trailing: shortcuts.chord(.browser).display, icon: { Image(systemName: "globe") }) {
+                dismiss()
+                TerminalController.preferredParent?.openWebPane()
+            }
             GoviMenuRow(title: "Remote hosts…", trailing: shortcuts.chord(.remoteHosts).display, icon: { Image(systemName: "server.rack") })
             {
                 dismiss()

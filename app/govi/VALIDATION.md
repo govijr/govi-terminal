@@ -1,5 +1,43 @@
 # Govi build record
 
+## November 9, 2026 — pane base class and browser pane
+
+Split leaves are now `GoviPaneView`, the base class of both `Ghostty.SurfaceView`
+and the new `GoviWebPaneView` (WebKit, non-persistent data store, Web Inspector
+enabled). Drag/dock, zoom, focus movement, close, the sidebar, the command
+palette and recovery work for both. Browser panes open from the **+** menu, the
+palette ("Open Browser Pane") or `Cmd+Shift+B`. Split, close, zoom and focus
+shortcuts act on a focused browser pane natively. Recovery checkpoints are
+version 2 (adds `web` leaves with address and title only); version 1 still loads.
+
+`build.sh` now detects an Xcode SDK newer than macOS 26 (Xcode 27.2 was
+installed on this machine) and points Zig 0.14.1 at the Command Line Tools
+SDK, with an `xcodebuild` shim that keeps the app build on the selected Xcode.
+
+Verified:
+
+- `./govi/build.sh`: ReleaseFast app builds; no new compiler warnings.
+- `./govi/test-layout.sh`: 694 checks, including mixed-kind trees round-tripping
+  through `SplitTree` Codable with their subclasses, docking a browser leaf, and
+  kind-less (older) trees decoding as terminals.
+- `./govi/test-workflows.sh`: mixed v2 checkpoint round trip, v1 compatibility,
+  browser-only workspaces, rejected `javascript:`/`data:`/`ftp:`/hostless/oversized
+  addresses, duplicate IDs across kinds, and template IDs refreshed.
+- `test-remote.sh`, `test-integrations.sh`, `test-recovery.py`, `test-hooks.py`,
+  `test-palette.py`, `test-agent-usage.py` pass unchanged.
+- Live, in a separate `dev.govi.terminal.pane-review` bundle: a seeded v2
+  checkpoint (terminal + browser on a local `file:` page) restored; WebKit loaded
+  the page and the app re-captured it with the page's own title. Further
+  terminal splits, including one split from the browser pane (inheriting the
+  terminal's folder), were captured correctly.
+
+**Not verified live:** computer use was unavailable in this session, so browser
+pane clicks, the address field, keyboard shortcuts while a page has focus,
+dragging/docking a browser pane, and restoring *focus* to a browser pane were
+not driven. The restore-focus check read the terminal as focused even after a
+delayed re-focus was added; that check was not conclusive because the review
+window was in use at the same time, so this remains open.
+
 ## November 9, 2026 — bounded subprocesses, file-event git refresh, cleanup
 
 All subprocesses now go through `GoviLocalProcess` (deadline, output cap,

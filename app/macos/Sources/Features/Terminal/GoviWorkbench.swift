@@ -35,7 +35,7 @@ struct GoviWorkbench<Content: View>: View {
     @ObservedObject var ghostty: Ghostty.App
     var surface: Ghostty.SurfaceView?
     var pwd: String?
-    var tree: SplitTree<Ghostty.SurfaceView>
+    var tree: SplitTree<GoviPaneView>
     var showPalette: () -> Void
     @ViewBuilder var content: () -> Content
     @ObservedObject private var notebook = GoviNotebook.shared
@@ -491,7 +491,7 @@ struct GoviWorkbench<Content: View>: View {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         var options: [CommandOption] = []
         for controller in TerminalController.all {
-            let leaves = controller.surfaceTree.root?.leaves() ?? []
+            let leaves = controller.surfaceTree.surfaces
             let root = controller.window.flatMap { workspaceRoots[$0.windowNumber] } ?? leaves.first?.pwd ?? home
             for leaf in leaves {
                 let state = activity.info[leaf.id]?.state ?? .idle
@@ -649,7 +649,7 @@ struct GoviWorkbench<Content: View>: View {
     private func workspaceRoot(_ window: NSWindow) -> String {
         if let root = workspaceRoots[window.windowNumber] { return root }
         let controller = window.windowController as? TerminalController
-        return controller?.surfaceTree.root?.leaves().first.map(rootKey) ?? FileManager.default.homeDirectoryForCurrentUser.path
+        return controller?.surfaceTree.surfaces.first.map(rootKey) ?? FileManager.default.homeDirectoryForCurrentUser.path
     }
     /// Remote panes group under their host, not the local folder ssh started in.
     private func rootKey(_ pane: Ghostty.SurfaceView) -> String {
@@ -662,12 +662,19 @@ struct GoviWorkbench<Content: View>: View {
         return group.workspaces.lazy.flatMap(leaves).compactMap { $0.goviLaunch.remote }.first
     }
     private func leaves(_ window: NSWindow) -> [Ghostty.SurfaceView] {
-        (window.windowController as? TerminalController)?.surfaceTree.root?.leaves() ?? []
+        (window.windowController as? TerminalController)?.surfaceTree.surfaces ?? []
     }
     private func visibleLeaves(_ window: NSWindow) -> [Ghostty.SurfaceView] {
         leaves(window).filter {
             filter.isEmpty || GoviPaneNaming.title($0).localizedCaseInsensitiveContains(filter)
                 || ($0.pwd ?? "").localizedCaseInsensitiveContains(filter)
+        }
+    }
+    private func visibleWebPanes(_ window: NSWindow) -> [GoviWebPaneView] {
+        let panes = (window.windowController as? TerminalController)?.surfaceTree.compactMap { $0 as? GoviWebPaneView } ?? []
+        return panes.filter {
+            filter.isEmpty || $0.paneTitle.localizedCaseInsensitiveContains(filter)
+                || ($0.url?.absoluteString ?? "").localizedCaseInsensitiveContains(filter)
         }
     }
     private func directoryName(_ path: String) -> String {
@@ -693,7 +700,7 @@ struct GoviWorkbench<Content: View>: View {
     }
 
     @ViewBuilder private func directorySection(_ group: DirectoryGroup) -> some View {
-        let shown = group.workspaces.filter { !visibleLeaves($0).isEmpty }
+        let shown = group.workspaces.filter { !visibleLeaves($0).isEmpty || !visibleWebPanes($0).isEmpty }
         if !shown.isEmpty {
             let open = !collapsedDirectories.contains(group.id) || !filter.isEmpty
             let waiting = group.workspaces.flatMap(leaves).filter { activity.info[$0.id]?.state.wantsAttention == true }.count
@@ -742,6 +749,18 @@ struct GoviWorkbench<Content: View>: View {
                                 selectWorkspace(window)
                                 (window.windowController as? TerminalController)?.focusedSurface = item
                                 window.makeFirstResponder(item)
+                            }.padding(.leading, GoviSidebarMetrics.indent)
+                        }
+                        ForEach(visibleWebPanes(window)) { item in
+                            let controller = window.windowController as? TerminalController
+                            GoviSidebarBrowser(
+                                pane: item,
+                                active: controller?.focusedPane === item && !tasksTabs.showing.contains(window.windowNumber)
+                            ) {
+                                tasksTabs.setShowing(window.windowNumber, false)
+                                selectWorkspace(window)
+                                controller?.focusedPane = item
+                                window.makeFirstResponder(item.paneFocusTarget)
                             }.padding(.leading, GoviSidebarMetrics.indent)
                         }
                         if tasksTabs.tabs.contains(window.windowNumber)
@@ -882,7 +901,7 @@ struct GoviWorkbench<Content: View>: View {
     private func workspaceName(_ window: NSWindow?) -> String {
         if let name = (window?.windowController as? TerminalController)?.goviName, !name.isEmpty { return name }
         if let controller = window?.windowController as? TerminalController,
-            let path = controller.focusedSurface?.pwd ?? controller.surfaceTree.root?.leaves().first?.pwd
+            let path = controller.focusedSurface?.pwd ?? controller.surfaceTree.surfaces.first?.pwd
         {
             return path == FileManager.default.homeDirectoryForCurrentUser.path ? "Home" : URL(fileURLWithPath: path).lastPathComponent
         }
@@ -969,7 +988,7 @@ struct GoviWorkbench<Content: View>: View {
         }
         let controller = TerminalController.newTab(ghostty, from: surface?.window, withBaseConfig: config)
         if request.agent != nil || request.label != nil,
-            let created = controller?.surfaceTree.root?.leaves().first
+            let created = controller?.surfaceTree.surfaces.first
         {
             GoviActivityCenter.shared.tag(created, agent: request.agent, label: request.label)
         }
@@ -986,7 +1005,7 @@ struct GoviWorkbench<Content: View>: View {
             return
         }
         if let existing = windows.first(where: {
-            ($0.windowController as? TerminalController)?.surfaceTree.contains(where: { $0.pwd == path }) == true
+            ($0.windowController as? TerminalController)?.surfaceTree.surfaces.contains(where: { $0.pwd == path }) == true
         }) {
             selectWorkspace(existing)
             return

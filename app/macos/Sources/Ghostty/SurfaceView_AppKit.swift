@@ -6,11 +6,9 @@ import GhosttyKit
 
 extension Ghostty {
     /// The NSView implementation for a terminal surface.
-    class SurfaceView: OSView, ObservableObject, Codable, Identifiable {
-        typealias ID = UUID
-        
-        /// Unique ID per surface
-        let id: UUID
+    // Govi: panes share a base class so non-terminal views can join splits.
+    // `id` (unique per surface) now lives in GoviPaneView.
+    class SurfaceView: GoviPaneView, ObservableObject, Codable {
 
         var goviLaunch = GoviPaneLaunch()
         @Published var goviRecovered = false
@@ -168,7 +166,6 @@ extension Ghostty {
 
         init(_ app: ghostty_app_t, baseConfig: SurfaceConfiguration? = nil, uuid: UUID? = nil) {
             self.markedText = NSMutableAttributedString()
-            self.id = uuid ?? .init()
             self.goviLaunch = baseConfig?.goviLaunch ?? .init()
             self.goviRecovered = baseConfig?.environmentVariables["GOVI_RECOVERED"] == "1"
 
@@ -188,7 +185,7 @@ extension Ghostty {
             // Initialize with some default frame size. The important thing is that this
             // is non-zero so that our layer bounds are non-zero so that our renderer
             // can do SOMETHING.
-            super.init(frame: NSMakeRect(0, 0, 800, 600))
+            super.init(id: uuid ?? .init(), frame: NSMakeRect(0, 0, 800, 600))
 
             // Our cache of screen data
             cachedScreenContents = .init(duration: .milliseconds(500)) { [weak self] in

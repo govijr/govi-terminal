@@ -7,7 +7,7 @@ class TerminalRestorableState: Codable {
     static let version: Int = 5
 
     let focusedSurface: String?
-    let surfaceTree: SplitTree<Ghostty.SurfaceView>
+    let surfaceTree: SplitTree<GoviPaneView>
     let goviID: UUID?
     let goviName: String?
 
@@ -102,7 +102,7 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
         // Setup our restored state on the controller
         // Find the focused surface in surfaceTree
         if let focusedStr = state.focusedSurface {
-            var foundView: Ghostty.SurfaceView?
+            var foundView: GoviPaneView?
             for view in c.surfaceTree {
                 if view.id.uuidString == focusedStr {
                     foundView = view
@@ -111,7 +111,7 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
             }
             
             if let view = foundView {
-                c.focusedSurface = view
+                c.focusedPane = view
                 restoreFocus(to: view, inWindow: window)
             }
         }
@@ -122,7 +122,7 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
     /// This restores the focus state of the surfaceview within the given window. When restoring,
     /// the view isn't immediately attached to the window since we have to wait for SwiftUI to
     /// catch up. Therefore, we sit in an async loop waiting for the attachment to happen.
-    private static func restoreFocus(to: Ghostty.SurfaceView, inWindow: NSWindow, attempts: Int = 0) {
+    private static func restoreFocus(to: GoviPaneView, inWindow: NSWindow, attempts: Int = 0) {
         // For the first attempt, we schedule it immediately. Subsequent events wait a bit
         // so we don't just spin the CPU at 100%. Give up after some period of time.
         let after: DispatchTime
@@ -145,7 +145,7 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
             // If the view is attached to some other window, we give up
             guard viewWindow == inWindow else { return }
 
-            inWindow.makeFirstResponder(to)
+            inWindow.makeFirstResponder(to.paneFocusTarget)
 
             // If the window is main, then we also make sure it comes forward. This
             // prevents a bug found in #1177 where sometimes on restore the windows

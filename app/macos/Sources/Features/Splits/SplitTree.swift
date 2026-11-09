@@ -21,8 +21,17 @@ enum GoviSnapZone: String, CaseIterable {
     }
 }
 
+/// A view that can be stored, encoded and restored as a split-tree leaf.
+///
+/// `SplitTree` decodes leaves through this protocol rather than `Decodable`
+/// so a tree of a base class can rebuild the right subclass for each leaf.
+protocol SplitTreeLeaf: AnyObject {
+    static func decodeLeaf(from decoder: Decoder) throws -> Self
+    func encodeLeaf(to encoder: Encoder) throws
+}
+
 /// SplitTree represents a tree of views that can be divided.
-struct SplitTree<ViewType: NSView & Codable & Identifiable> {
+struct SplitTree<ViewType: NSView & Identifiable & SplitTreeLeaf> {
     /// The root of the tree. This can be nil to indicate the tree is empty.
     let root: Node?
 
@@ -1191,7 +1200,7 @@ extension SplitTree.Node {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         if container.contains(.view) {
-            let view = try container.decode(ViewType.self, forKey: .view)
+            let view = try ViewType.decodeLeaf(from: container.superDecoder(forKey: .view))
             self = .leaf(view: view)
         } else if container.contains(.split) {
             let split = try container.decode(Split.self, forKey: .split)
@@ -1211,7 +1220,7 @@ extension SplitTree.Node {
 
         switch self {
         case .leaf(let view):
-            try container.encode(view, forKey: .view)
+            try view.encodeLeaf(to: container.superEncoder(forKey: .view))
 
         case .split(let split):
             try container.encode(split, forKey: .split)

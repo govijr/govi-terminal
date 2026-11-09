@@ -39,6 +39,11 @@ import SwiftUI
             let controller = window.windowController as? TerminalController
         else { return false }
         if let editor = window.firstResponder as? NSTextView, editor.isFieldEditor { return false }
+        if let pane = controller.focusedPane, !(pane is Ghostty.SurfaceView),
+            controller.performPaneCommand(action, on: pane)
+        {
+            return true
+        }
         if let binding = action.terminalAction {
             return controller.focusedSurface?.surfaceModel?.perform(action: binding) ?? false
         }
@@ -52,6 +57,7 @@ import SwiftUI
         case .nextAttention: GoviActivityCenter.shared.focusNext()
         case .templates: NotificationCenter.default.post(name: .goviTemplates, object: nil)
         case .remoteHosts: NotificationCenter.default.post(name: .goviRemoteHosts, object: nil)
+        case .browser: controller.openWebPane()
         default: return false
         }
         return true

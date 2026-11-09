@@ -7,6 +7,10 @@ enum GoviPaneNaming {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
     }
+    static func title(_ pane: GoviPaneView) -> String {
+        if let surface = pane as? Ghostty.SurfaceView { return title(surface) }
+        return pane.paneTitle
+    }
     static func title(_ surface: Ghostty.SurfaceView) -> String {
         let title = surface.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let path = surface.pwd ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -50,7 +54,7 @@ enum GoviPaneCoordinator {
     static let typeID = "dev.govi.terminal.pane"
     static let pasteboardType = NSPasteboard.PasteboardType(typeID)
     private(set) static var draggedID: UUID?
-    static func beginDrag(_ surface: Ghostty.SurfaceView) {
+    static func beginDrag(_ surface: GoviPaneView) {
         draggedID = surface.id
         GoviPaneDragPreview.shared.target = nil
     }
@@ -58,7 +62,7 @@ enum GoviPaneCoordinator {
         draggedID = nil
         GoviPaneDragPreview.shared.target = nil
     }
-    static func dragProvider(for surface: Ghostty.SurfaceView) -> NSItemProvider {
+    static func dragProvider(for surface: GoviPaneView) -> NSItemProvider {
         beginDrag(surface)
         let provider = NSItemProvider()
         provider.registerDataRepresentation(forTypeIdentifier: typeID, visibility: .ownProcess) { completion in
@@ -71,7 +75,7 @@ enum GoviPaneCoordinator {
     static func owner(of id: UUID) -> TerminalController? { TerminalController.all.first { $0.surfaceTree.find(id: id) != nil } }
 
     @discardableResult
-    static func previewDrop(on target: Ghostty.SurfaceView, at point: CGPoint, in size: CGSize) -> GoviSnapZone? {
+    static func previewDrop(on target: GoviPaneView, at point: CGPoint, in size: CGSize) -> GoviSnapZone? {
         guard let draggedID, draggedID != target.id, owner(of: draggedID) != nil, owner(of: target.id) != nil,
             size.width > 0, size.height > 0, point.x.isFinite, point.y.isFinite
         else {
@@ -89,7 +93,7 @@ enum GoviPaneCoordinator {
 
     /// Native terminal surfaces handle pane drops explicitly, so a drop over
     /// terminal text is docking rather than a paste or a lost SwiftUI drop.
-    static func updateNativeDrop(_ sender: any NSDraggingInfo, on target: Ghostty.SurfaceView) -> NSDragOperation? {
+    static func updateNativeDrop(_ sender: any NSDraggingInfo, on target: GoviPaneView) -> NSDragOperation? {
         guard sender.draggingPasteboard.types?.contains(pasteboardType) == true else { return nil }
         guard nativeDragID(sender) == draggedID, draggedID != nil else {
             leaveDrop(on: target.id)
@@ -101,7 +105,7 @@ enum GoviPaneCoordinator {
         let size = CGSize(width: target.bounds.width, height: target.bounds.height + GoviPaneMetrics.headerHeight)
         return previewDrop(on: target, at: point, in: size) == nil ? [] : .move
     }
-    static func performNativeDrop(_ sender: any NSDraggingInfo, on target: Ghostty.SurfaceView) -> Bool? {
+    static func performNativeDrop(_ sender: any NSDraggingInfo, on target: GoviPaneView) -> Bool? {
         guard let operation = updateNativeDrop(sender, on: target) else { return nil }
         guard operation == .move, let id = draggedID, let destination = GoviPaneDragPreview.shared.target,
             destination.id == target.id
@@ -120,14 +124,14 @@ enum GoviPaneCoordinator {
     }
 
     @discardableResult
-    static func move(_ id: UUID, to target: Ghostty.SurfaceView, zone: GoviSnapZone) -> Bool {
+    static func move(_ id: UUID, to target: GoviPaneView, zone: GoviSnapZone) -> Bool {
         guard id != target.id, let source = owner(of: id), let destination = owner(of: target.id),
             let view = source.surfaceTree.first(where: { $0.id == id })
         else { return false }
         do {
             if source === destination {
                 let tree = try source.surfaceTree.docking(view: view, to: target, zone: zone)
-                source.replaceSurfaceTree(tree, moveFocusTo: view, moveFocusFrom: source.focusedSurface, undoAction: "Move Pane")
+                source.replaceSurfaceTree(tree, moveFocusTo: view, moveFocusFrom: source.focusedPane, undoAction: "Move Pane")
             } else if zone != .center {
                 // Construct both results before changing ownership. Strong references
                 // keep the same SurfaceView/PTY alive throughout the transfer.
@@ -137,7 +141,7 @@ enum GoviPaneCoordinator {
                 destination.undoManager?.removeAllActions(withTarget: destination)
                 destination.surfaceTree = targetTree
                 source.surfaceTree = sourceTree
-                source.focusedSurface = sourceTree.root?.leaves().first
+                source.focusedPane = sourceTree.root?.leaves().first
             } else {
                 let sourceTree = try source.surfaceTree.replace(node: .leaf(view: view), with: .leaf(view: target))
                 let targetTree = try destination.surfaceTree.replace(node: .leaf(view: target), with: .leaf(view: view))
@@ -145,11 +149,11 @@ enum GoviPaneCoordinator {
                 destination.undoManager?.removeAllActions(withTarget: destination)
                 source.surfaceTree = sourceTree
                 destination.surfaceTree = targetTree
-                source.focusedSurface = target
+                source.focusedPane = target
             }
-            destination.focusedSurface = view
+            destination.focusedPane = view
             destination.window?.makeKeyAndOrderFront(nil)
-            DispatchQueue.main.async { destination.window?.makeFirstResponder(view) }
+            DispatchQueue.main.async { destination.window?.makeFirstResponder(view.paneFocusTarget) }
             NotificationCenter.default.post(name: .goviLayoutChanged, object: nil)
             return true
         } catch {
@@ -158,10 +162,10 @@ enum GoviPaneCoordinator {
         }
     }
 
-    static func arrange(_ views: [Ghostty.SurfaceView]) {
+    static func arrange(_ views: [GoviPaneView]) {
         guard let first = views.first, let owner = owner(of: first.id), views.count > 1 else { return }
-        typealias Tree = SplitTree<Ghostty.SurfaceView>
-        func build(_ items: ArraySlice<Ghostty.SurfaceView>, horizontal: Bool) -> Tree.Node {
+        typealias Tree = SplitTree<GoviPaneView>
+        func build(_ items: ArraySlice<GoviPaneView>, horizontal: Bool) -> Tree.Node {
             if items.count == 1 { return .leaf(view: items.first!) }
             let mid = (items.count + 1) / 2
             return .split(
@@ -171,30 +175,48 @@ enum GoviPaneCoordinator {
         }
         owner.replaceSurfaceTree(
             .init(root: build(views[...], horizontal: true), zoomed: nil),
-            moveFocusTo: owner.focusedSurface, moveFocusFrom: owner.focusedSurface, undoAction: "Arrange Panes")
-        DispatchQueue.main.async { if let focused = owner.focusedSurface { owner.window?.makeFirstResponder(focused) } }
+            moveFocusTo: owner.focusedPane, moveFocusFrom: owner.focusedPane, undoAction: "Arrange Panes")
+        DispatchQueue.main.async { if let focused = owner.focusedPane { owner.window?.makeFirstResponder(focused.paneFocusTarget) } }
         NotificationCenter.default.post(name: .goviLayoutChanged, object: nil)
     }
 }
 
 struct GoviTerminalPane: View {
+    @ObservedObject var surface: Ghostty.SurfaceView
+    var isSplit: Bool
+
+    var body: some View {
+        GoviPaneFrame(pane: surface, isSplit: isSplit, label: "Terminal pane") { showButtons in
+            GoviPaneBar(surface: surface, isSplit: isSplit, showButtons: showButtons)
+        } content: {
+            Ghostty.SurfaceWrapper(surfaceView: surface, isSplit: isSplit)
+        }
+    }
+}
+
+/// The layout every pane shares: a title bar, the content, the active-pane
+/// line, the docking preview and the drop target for pane drags.
+struct GoviPaneFrame<Header: View, Content: View>: View {
     @Environment(\.goviPalette) private var ui
 
-    @ObservedObject var surface: Ghostty.SurfaceView
-    @ObservedObject private var dragPreview = GoviPaneDragPreview.shared
+    let pane: GoviPaneView
     var isSplit: Bool
+    var label: String
+    @ViewBuilder var header: (_ showButtons: Bool) -> Header
+    @ViewBuilder var content: () -> Content
+    @ObservedObject private var dragPreview = GoviPaneDragPreview.shared
     @Environment(\.goviActivePane) private var activeID
     @State private var hovering = false
     // Re-render when the backdrop or terminal opacity changes in Settings.
     @AppStorage(GoviBackdropStore.styleKey) private var backdropStyle = "none"
-    private var active: Bool { activeID == surface.id }
+    private var active: Bool { activeID == pane.id }
 
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                GoviPaneBar(surface: surface, isSplit: isSplit, showButtons: active || hovering)
+                header(active || hovering)
                     .onHover { hovering = $0 }
-                Ghostty.SurfaceWrapper(surfaceView: surface, isSplit: isSplit)
+                content()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             // The terminal surface already paints its own translucent background;
@@ -204,7 +226,7 @@ struct GoviTerminalPane: View {
             )
             .overlay(alignment: .top) { if isSplit && active { ui.line.frame(height: 1).allowsHitTesting(false) } }
             .overlay(alignment: .topLeading) {
-                if let target = dragPreview.target, target.id == surface.id {
+                if let target = dragPreview.target, target.id == pane.id {
                     let rect = target.zone.rect(in: geometry.size).insetBy(dx: 3, dy: 3)
                     RoundedRectangle(cornerRadius: 5)
                         .fill(ui.accent.opacity(0.14))
@@ -214,16 +236,16 @@ struct GoviTerminalPane: View {
                         .allowsHitTesting(false).accessibilityHidden(true)
                 }
             }
-            .onDrop(of: [GoviPaneCoordinator.typeID], delegate: GoviPaneDropDelegate(surface: surface, size: geometry.size))
+            .onDrop(of: [GoviPaneCoordinator.typeID], delegate: GoviPaneDropDelegate(surface: pane, size: geometry.size))
         }
-        .accessibilityElement(children: .contain).accessibilityLabel("Terminal pane: \(GoviPaneNaming.title(surface))")
+        .accessibilityElement(children: .contain).accessibilityLabel("\(label): \(GoviPaneNaming.title(pane))")
     }
 }
 
 /// SwiftUI handles the title/gaps; the native surface handles terminal content.
 /// Both routes publish the same pane-local preview and use the same move logic.
 private struct GoviPaneDropDelegate: DropDelegate {
-    let surface: Ghostty.SurfaceView
+    let surface: GoviPaneView
     let size: CGSize
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -259,8 +281,8 @@ private struct GoviPaneDropDelegate: DropDelegate {
 
 /// A native mouse drag starts immediately from the title, with no long press or
 /// SwiftUI tap recognizer competing with it. The pane's controls stay separate.
-private struct GoviPaneDragHandle: NSViewRepresentable {
-    let surface: Ghostty.SurfaceView
+struct GoviPaneDragHandle: NSViewRepresentable {
+    let surface: GoviPaneView
     let isSplit: Bool
 
     func makeNSView(context: Context) -> Handle {
@@ -271,11 +293,11 @@ private struct GoviPaneDragHandle: NSViewRepresentable {
     func updateNSView(_ view: Handle, context: Context) {
         view.surface = surface
         view.isSplit = isSplit
-        view.toolTip = "Drag to dock this terminal beside another pane. Drop in the center to swap."
+        view.toolTip = "Drag to dock this pane beside another. Drop in the center to swap."
     }
 
     final class Handle: NSView, NSDraggingSource {
-        weak var surface: Ghostty.SurfaceView?
+        weak var surface: GoviPaneView?
         var isSplit = false
         private var mouseDownPoint: CGPoint?
         private var dragging = false
@@ -284,9 +306,9 @@ private struct GoviPaneDragHandle: NSViewRepresentable {
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
         override func mouseDown(with event: NSEvent) {
-            surface?.window?.makeFirstResponder(surface)
-            if event.clickCount == 2, isSplit {
-                _ = surface?.surfaceModel?.perform(action: "toggle_split_zoom")
+            if let surface { surface.window?.makeFirstResponder(surface.paneFocusTarget) }
+            if event.clickCount == 2, isSplit, let surface {
+                (surface.window?.windowController as? BaseTerminalController)?.performPaneCommand(.zoom, on: surface)
                 mouseDownPoint = nil
             } else {
                 mouseDownPoint = convert(event.locationInWindow, from: nil)
@@ -399,5 +421,107 @@ struct GoviPaneBar: View {
     private func perform(_ action: String) {
         surface.window?.makeFirstResponder(surface)
         _ = surface.surfaceModel?.perform(action: action)
+    }
+}
+
+// MARK: - Browser pane
+
+/// A browser in a split: the shared pane frame around a `GoviWebPaneView`.
+struct GoviWebPane: View {
+    @Environment(\.goviPalette) private var ui
+    @ObservedObject var pane: GoviWebPaneView
+    var isSplit: Bool
+
+    var body: some View {
+        GoviPaneFrame(pane: pane, isSplit: isSplit, label: "Browser pane") { showButtons in
+            GoviWebPaneBar(pane: pane, isSplit: isSplit, showButtons: showButtons)
+        } content: {
+            GoviPaneHost(view: pane)
+                .overlay(alignment: .bottom) {
+                    if let problem = pane.problem {
+                        Text(problem).font(GoviInk.font(11.5)).foregroundStyle(ui.ink).lineLimit(2)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            .padding(10)
+                            .accessibilityLabel("Browser problem: \(problem)")
+                    }
+                }
+        }
+    }
+}
+
+/// Puts an existing pane view (and its live state) into SwiftUI without
+/// recreating it when the split layout changes.
+private struct GoviPaneHost: NSViewRepresentable {
+    let view: NSView
+    func makeNSView(context: Context) -> NSView { view }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// Title, address field and pane controls for a browser pane.
+private struct GoviWebPaneBar: View {
+    @Environment(\.goviPalette) private var ui
+    @ObservedObject var pane: GoviWebPaneView
+    @ObservedObject private var shortcuts = GoviShortcuts.shared
+    var isSplit: Bool
+    var showButtons: Bool
+    @State private var address = ""
+    @FocusState private var editing: Bool
+    @AppStorage(GoviBackdropStore.styleKey) private var backdropStyle = "none"
+
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: pane.isLoading ? "hourglass" : "globe").font(.system(size: 11)).foregroundStyle(ui.muted)
+                    .frame(width: 14, height: 14)
+                Text(pane.paneTitle).foregroundStyle(ui.ink).lineLimit(1).frame(maxWidth: 180, alignment: .leading)
+            }
+            .frame(height: GoviPaneMetrics.headerHeight)
+            .overlay { GoviPaneDragHandle(surface: pane, isSplit: isSplit) }
+            .help("Drag to dock beside another pane; drop in its center to swap")
+            button("chevron.left", "Back") { pane.goBack() }.disabled(!pane.canGoBack)
+            button("chevron.right", "Forward") { pane.goForward() }.disabled(!pane.canGoForward)
+            button(pane.isLoading ? "xmark" : "arrow.clockwise", pane.isLoading ? "Stop loading" : "Reload") { pane.reload() }
+            TextField("Address, such as localhost:3000", text: $address)
+                .textFieldStyle(.plain).font(GoviInk.font(11.5)).foregroundStyle(ui.ink)
+                .padding(.horizontal, 8).frame(height: 22)
+                .background(ui.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .focused($editing)
+                .onSubmit { if pane.load(address) { pane.window?.makeFirstResponder(pane.paneFocusTarget) } }
+                .accessibilityLabel("Address")
+            HStack(spacing: 2) {
+                button("rectangle.split.2x1", "Split right (\(shortcuts.chord(.splitRight).display))") { command(.splitRight) }
+                button("rectangle.split.1x2", "Split below (\(shortcuts.chord(.splitDown).display))") { command(.splitDown) }
+                if isSplit {
+                    button("arrow.up.left.and.arrow.down.right", "Maximize / restore pane (\(shortcuts.chord(.zoom).display))") {
+                        command(.zoom)
+                    }
+                }
+                button("xmark", "Close pane (\(shortcuts.chord(.closeTerminal).display))") { command(.closeTerminal) }
+            }.opacity(showButtons ? 1 : 0).allowsHitTesting(showButtons)
+        }
+        .font(GoviInk.font(12))
+        .padding(.leading, 12).padding(.trailing, 6)
+        .frame(height: GoviPaneMetrics.headerHeight)
+        .background(GoviInk.color(GoviTheme.current.background).opacity(GoviBackdropStore.terminalOpacity), ignoresSafeAreaEdges: [])
+        .contentShape(Rectangle())
+        .animation(.easeOut(duration: 0.12), value: showButtons)
+        .onAppear {
+            address = pane.url?.absoluteString ?? ""
+            // A new, empty browser starts with the address field ready for typing.
+            if pane.url == nil { DispatchQueue.main.async { editing = true } }
+        }
+        .onChange(of: pane.url) { url in if !editing { address = url?.absoluteString ?? "" } }
+    }
+
+    private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 12, weight: .regular))
+                .frame(width: 24, height: 24).modifier(GoviHoverHighlight())
+        }.buttonStyle(.plain).help(help).accessibilityLabel(help)
+    }
+
+    private func command(_ action: GoviShortcutAction) {
+        (pane.window?.windowController as? BaseTerminalController)?.performPaneCommand(action, on: pane)
     }
 }

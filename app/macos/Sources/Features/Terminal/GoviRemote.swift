@@ -203,7 +203,7 @@ struct GoviRemoteEntry: Identifiable, Equatable {
         if let surface, let owner = GoviPaneCoordinator.owner(of: surface.id) {
             created = owner.newSplit(at: surface, direction: .right, baseConfig: config)
         } else {
-            created = TerminalController.newTab(ghostty, from: window, withBaseConfig: config)?.surfaceTree.first
+            created = TerminalController.newTab(ghostty, from: window, withBaseConfig: config)?.surfaceTree.surfaces.first
         }
         guard let created else { return "Govi could not open a terminal for \(target.name)." }
         GoviActivityCenter.shared.tag(created, agent: nil, label: target.name)

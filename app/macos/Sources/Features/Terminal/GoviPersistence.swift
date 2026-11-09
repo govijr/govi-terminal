@@ -62,7 +62,7 @@ enum GoviPersistence {
                 attached[id] = nil
             }
         }
-        if let owner = GoviPaneCoordinator.owner(of: id), let pane = owner.surfaceTree.first(where: { $0.id == id }) {
+        if let owner = GoviPaneCoordinator.owner(of: id), let pane = owner.surfaceTree.surfaces.first(where: { $0.id == id }) {
             pane.goviRecovered = recovered
         }
         GoviDetachedStore.shared.refresh(force: true)
@@ -76,7 +76,7 @@ enum GoviPersistence {
 
     /// Closing a window or workspace detaches its persistent panes instead of
     /// ending their programs. They're listed under "Running in background".
-    static func detach(_ tree: SplitTree<Ghostty.SurfaceView>) {
+    static func detach(_ tree: SplitTree<GoviPaneView>) {
         let ids = tree.map { $0.id }
         lock.withLock {
             for id in ids where attached.removeValue(forKey: id) != nil {

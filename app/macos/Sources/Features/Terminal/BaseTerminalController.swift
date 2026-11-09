@@ -36,13 +36,19 @@ class BaseTerminalController: NSWindowController,
     /// The app instance that this terminal view will represent.
     let ghostty: Ghostty.App
 
-    /// The currently focused surface.
-    var focusedSurface: Ghostty.SurfaceView? = nil {
+    /// The currently focused pane: a terminal or a native pane such as a browser.
+    var focusedPane: GoviPaneView? = nil {
         didSet { syncFocusToSurfaceTree() }
     }
 
+    /// The currently focused terminal, or nil when a non-terminal pane has focus.
+    var focusedSurface: Ghostty.SurfaceView? {
+        get { focusedPane as? Ghostty.SurfaceView }
+        set { focusedPane = newValue }
+    }
+
     /// The tree of splits within this terminal window.
-    @Published var surfaceTree: SplitTree<Ghostty.SurfaceView> = .init() {
+    @Published var surfaceTree: SplitTree<GoviPaneView> = .init() {
         didSet { surfaceTreeDidChange(from: oldValue, to: surfaceTree) }
     }
 
@@ -107,7 +113,7 @@ class BaseTerminalController: NSWindowController,
 
     init(_ ghostty: Ghostty.App,
          baseConfig base: Ghostty.SurfaceConfiguration? = nil,
-         surfaceTree tree: SplitTree<Ghostty.SurfaceView>? = nil
+         surfaceTree tree: SplitTree<GoviPaneView>? = nil
     ) {
         self.ghostty = ghostty
         self.derivedConfig = DerivedConfig(ghostty.config)
@@ -198,8 +204,8 @@ class BaseTerminalController: NSWindowController,
     /// Create a new split.
     @discardableResult
     func newSplit(
-        at oldView: Ghostty.SurfaceView,
-        direction: SplitTree<Ghostty.SurfaceView>.NewDirection,
+        at oldView: GoviPaneView,
+        direction: SplitTree<GoviPaneView>.NewDirection,
         baseConfig config: Ghostty.SurfaceConfiguration? = nil
     ) -> Ghostty.SurfaceView? {
         // We can only create new splits for surfaces in our tree.
@@ -207,10 +213,10 @@ class BaseTerminalController: NSWindowController,
 
         // Create a new surface view
         guard let ghostty_app = ghostty.app else { return nil }
-        let newView = Ghostty.SurfaceView(ghostty_app, baseConfig: config)
+        let newView = Ghostty.SurfaceView(ghostty_app, baseConfig: config ?? inheritedConfig(from: oldView))
 
         // Do the split
-        let newTree: SplitTree<Ghostty.SurfaceView>
+        let newTree: SplitTree<GoviPaneView>
         do {
             newTree = try surfaceTree.insert(
                 view: newView,
@@ -236,7 +242,7 @@ class BaseTerminalController: NSWindowController,
     /// Called when the surfaceTree variable changed.
     ///
     /// Subclasses should call super first.
-    func surfaceTreeDidChange(from: SplitTree<Ghostty.SurfaceView>, to: SplitTree<Ghostty.SurfaceView>) {
+    func surfaceTreeDidChange(from: SplitTree<GoviPaneView>, to: SplitTree<GoviPaneView>) {
         // If our surface tree becomes empty then we have no focused surface.
         if (to.isEmpty) {
             focusedSurface = nil
@@ -247,15 +253,24 @@ class BaseTerminalController: NSWindowController,
     /// Update all surfaces with the focus state. This ensures that libghostty has an accurate view about
     /// what surface is focused. This must be called whenever a surface OR window changes focus.
     func syncFocusToSurfaceTree() {
-        for surfaceView in surfaceTree {
+        for pane in surfaceTree {
             // Our focus state requires that this window is key and our currently
-            // focused surface is the surface in this view.
+            // focused pane is the pane in this view.
             let focused: Bool = (window?.isKeyWindow ?? false) &&
                 !commandPaletteIsShowing &&
-                focusedSurface != nil &&
-                surfaceView == focusedSurface!
-            surfaceView.focusDidChange(focused)
+                focusedPane != nil &&
+                pane == focusedPane!
+            pane.paneFocusDidChange(focused)
         }
+    }
+
+    /// Config for a terminal split from a non-terminal pane: start in that
+    /// pane's folder, else the most recent terminal's.
+    func inheritedConfig(from pane: GoviPaneView) -> Ghostty.SurfaceConfiguration? {
+        guard !(pane is Ghostty.SurfaceView) else { return nil }
+        var config = Ghostty.SurfaceConfiguration()
+        config.workingDirectory = pane.paneDirectory ?? surfaceTree.surfaces.first?.pwd
+        return config
     }
 
     // Call this whenever the frame changes
@@ -307,7 +322,7 @@ class BaseTerminalController: NSWindowController,
 
     /// Close a surface from a view.
     func closeSurface(
-        _ view: Ghostty.SurfaceView,
+        _ view: GoviPaneView,
         withConfirmation: Bool = true
     ) {
         guard let node = surfaceTree.root?.node(view: view) else { return }
@@ -318,7 +333,7 @@ class BaseTerminalController: NSWindowController,
     ///
     /// This will also insert the proper undo stack information in.
     func closeSurface(
-        _ node: SplitTree<Ghostty.SurfaceView>.Node,
+        _ node: SplitTree<GoviPaneView>.Node,
         withConfirmation: Bool = true
     ) {
         // This node must be part of our tree
@@ -326,6 +341,13 @@ class BaseTerminalController: NSWindowController,
 
         // If the child process is not alive, then we exit immediately
         guard withConfirmation else {
+            removeSurfaceNode(node)
+            return
+        }
+
+        // Only terminals have processes; panes such as a browser close at once.
+        let terminals = node.surfaces
+        guard !terminals.isEmpty || node.leaves().contains(where: \.paneNeedsConfirmClose) else {
             removeSurfaceNode(node)
             return
         }
@@ -369,7 +391,7 @@ class BaseTerminalController: NSWindowController,
 
     /// Find the next surface to focus when a node is being closed.
     /// Goes to previous split unless we're the leftmost leaf, then goes to next.
-    private func findNextFocusTargetAfterClosing(node: SplitTree<Ghostty.SurfaceView>.Node) -> Ghostty.SurfaceView? {
+    private func findNextFocusTargetAfterClosing(node: SplitTree<GoviPaneView>.Node) -> GoviPaneView? {
         guard let root = surfaceTree.root else { return nil }
         
         // If we're the leftmost, then we move to the next surface after closing.
@@ -386,10 +408,10 @@ class BaseTerminalController: NSWindowController,
     /// This also updates the undo manager to support restoring this node.
     ///
     /// This does no confirmation and assumes confirmation is already done.
-    private func removeSurfaceNode(_ node: SplitTree<Ghostty.SurfaceView>.Node) {
+    private func removeSurfaceNode(_ node: SplitTree<GoviPaneView>.Node) {
         // Move focus if the closed surface was focused and we have a next target
-        let nextFocus: Ghostty.SurfaceView? = if node.contains(
-            where: { $0 == focusedSurface }
+        let nextFocus: GoviPaneView? = if node.contains(
+            where: { $0 == focusedPane }
         ) {
             findNextFocusTargetAfterClosing(node: node)
         } else {
@@ -399,15 +421,15 @@ class BaseTerminalController: NSWindowController,
         replaceSurfaceTree(
             surfaceTree.remove(node),
             moveFocusTo: nextFocus,
-            moveFocusFrom: focusedSurface,
-            undoAction: "Close Terminal"
+            moveFocusFrom: focusedPane,
+            undoAction: node.surfaces.isEmpty ? "Close Pane" : "Close Terminal"
         )
     }
 
     func replaceSurfaceTree(
-        _ newTree: SplitTree<Ghostty.SurfaceView>,
-        moveFocusTo newView: Ghostty.SurfaceView? = nil,
-        moveFocusFrom oldView: Ghostty.SurfaceView? = nil,
+        _ newTree: SplitTree<GoviPaneView>,
+        moveFocusTo newView: GoviPaneView? = nil,
+        moveFocusFrom oldView: GoviPaneView? = nil,
         undoAction: String? = nil
     ) {
         // Setup our new split tree
@@ -431,7 +453,7 @@ class BaseTerminalController: NSWindowController,
                 target.surfaceTree = oldTree
                 if let oldView {
                     DispatchQueue.main.async {
-                        Ghostty.moveFocus(to: oldView, from: target.focusedSurface)
+                        Ghostty.moveFocus(to: oldView, from: target.focusedPane)
                     }
                 }
 
@@ -442,7 +464,7 @@ class BaseTerminalController: NSWindowController,
                     target.replaceSurfaceTree(
                         newTree,
                         moveFocusTo: newView,
-                        moveFocusFrom: target.focusedSurface,
+                        moveFocusFrom: target.focusedPane,
                         undoAction: undoAction)
                 }
             }
@@ -542,7 +564,7 @@ class BaseTerminalController: NSWindowController,
         // Determine our desired direction
         guard let directionAny = notification.userInfo?["direction"] else { return }
         guard let direction = directionAny as? ghostty_action_split_direction_e else { return }
-        let splitDirection: SplitTree<Ghostty.SurfaceView>.NewDirection
+        let splitDirection: SplitTree<GoviPaneView>.NewDirection
         switch (direction) {
         case GHOSTTY_SPLIT_DIRECTION_RIGHT: splitDirection = .right
         case GHOSTTY_SPLIT_DIRECTION_LEFT: splitDirection = .left
@@ -633,7 +655,7 @@ class BaseTerminalController: NSWindowController,
         guard let amount = amountAny as? UInt16 else { return }
         
         // Convert Ghostty.SplitResizeDirection to SplitTree.Spatial.Direction
-        let spatialDirection: SplitTree<Ghostty.SurfaceView>.Spatial.Direction
+        let spatialDirection: SplitTree<GoviPaneView>.Spatial.Direction
         switch direction {
         case .up: spatialDirection = .up
         case .down: spatialDirection = .down
@@ -665,7 +687,7 @@ class BaseTerminalController: NSWindowController,
     }
 
     private func localEventFlagsChanged(_ event: NSEvent) -> NSEvent? {
-        var surfaces: [Ghostty.SurfaceView] = surfaceTree.map { $0 }
+        var surfaces: [Ghostty.SurfaceView] = surfaceTree.surfaces
 
         // If we're the main window receiving key input, then we want to avoid
         // calling this on our focused surface because that'll trigger a double
@@ -683,7 +705,36 @@ class BaseTerminalController: NSWindowController,
 
     // MARK: TerminalViewDelegate
 
+    /// A pane reported that it took focus (see `GoviPaneView.reportFocus`).
+    func focusedPaneDidChange(to pane: GoviPaneView) {
+        guard surfaceTree.contains(pane) else { return }
+        if let surface = pane as? Ghostty.SurfaceView {
+            guard surface !== focusedPane else { return }
+            focusedSurfaceDidChange(to: surface)
+            return
+        }
+        guard pane !== focusedPane else { return }
+        focusedPane = pane
+        focusedSurfaceCancellables = []
+        titleDidChange(to: pane.paneTitle)
+        if let web = pane as? GoviWebPaneView {
+            web.$pageTitle
+                .map { [weak web] _ in web?.paneTitle ?? "" }
+                .sink { [weak self] in self?.titleDidChange(to: $0) }
+                .store(in: &focusedSurfaceCancellables)
+        }
+    }
+
     func focusedSurfaceDidChange(to: Ghostty.SurfaceView?) {
+        // SwiftUI's focused value can name a terminal while AppKit focus is in
+        // a browser or other native pane (for example as a window appears).
+        // AppKit's first responder is what receives keys, so it wins.
+        if to != nil, let responder = window?.firstResponder as? NSView,
+            let pane = surfaceTree.first(where: { !($0 is Ghostty.SurfaceView) && responder.isDescendant(of: $0) })
+        {
+            focusedPaneDidChange(to: pane)
+            return
+        }
         let lastFocusedSurface = focusedSurface
         focusedSurface = to
 
@@ -745,7 +796,7 @@ class BaseTerminalController: NSWindowController,
         self.window?.contentResizeIncrements = to
     }
 
-    func splitDidResize(node: SplitTree<Ghostty.SurfaceView>.Node, to newRatio: Double) {
+    func splitDidResize(node: SplitTree<GoviPaneView>.Node, to newRatio: Double) {
         let resizedNode = node.resize(to: newRatio)
         do {
             surfaceTree = try surfaceTree.replace(node: node, with: resizedNode)
@@ -913,7 +964,7 @@ class BaseTerminalController: NSWindowController,
         guard alert == nil else { return false }
 
         // If our surfaces don't require confirmation, close.
-        if !surfaceTree.contains(where: { GoviPersistence.needsConfirmClose($0) }) {
+        if !surfaceTree.surfaces.contains(where: { GoviPersistence.needsConfirmClose($0) }) {
             GoviPersistence.detach(surfaceTree)
             return true
         }
@@ -956,7 +1007,7 @@ class BaseTerminalController: NSWindowController,
 
     func windowDidChangeOcclusionState(_ notification: Notification) {
         let visible = self.window?.occlusionState.contains(.visible) ?? false
-        for view in surfaceTree {
+        for view in surfaceTree.surfaces {
             if let surface = view.surface {
                 ghostty_surface_set_occlusion(surface, visible)
             }

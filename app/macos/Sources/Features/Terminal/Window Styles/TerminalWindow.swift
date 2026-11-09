@@ -410,7 +410,8 @@ class TerminalWindow: NSWindow {
                 surface = focusedSurface
             } else {
                 // If it doesn't border the top, we use the top-left leaf
-                surface = terminalController.surfaceTree.root?.leftmostLeaf()
+                surface = terminalController.surfaceTree.root?.leftmostLeaf() as? Ghostty.SurfaceView
+                    ?? terminalController.surfaceTree.surfaces.first
             }
 
             if let surface {

@@ -34,6 +34,45 @@ import Foundation
         version.version = 900
         precondition(!version.isValid)
         precondition(!GoviRecoveryCheckpoint(workspaces: [saved, saved]).isValid)
+
+        // Browser panes (checkpoint version 2) alongside terminals.
+        let web = GoviWebPaneRecord(id: UUID(), url: "http://localhost:3000/login?next=%2F", title: "Dev server")
+        let blank = GoviWebPaneRecord(id: UUID(), url: "", title: "")
+        let mixed = GoviWorkspaceLayout.split(
+            vertical: false, ratio: 0.5, first: .terminal(first),
+            second: .split(vertical: true, ratio: 0.5, first: .web(web), second: .web(blank)))
+        precondition(mixed.isValid && mixed.panes.map(\.id) == [first.id] && mixed.webPanes == [web, blank])
+        precondition(mixed.paneIDs == [first.id, web.id, blank.id])
+        let mixedCheckpoint = GoviRecoveryCheckpoint(
+            workspaces: [.init(id: UUID(), name: "Mixed", layout: mixed, focusedPane: web.id, group: 0, frame: [0, 0, 900, 600])])
+        precondition(mixedCheckpoint.version == 2 && mixedCheckpoint.isValid)
+        let mixedDecoded = try JSONDecoder().decode(GoviRecoveryCheckpoint.self, from: JSONEncoder().encode(mixedCheckpoint))
+        precondition(mixedDecoded == mixedCheckpoint)
+        // A browser-only workspace is still a workspace.
+        precondition(GoviWorkspaceLayout.web(web).isValid)
+        // Version 1 checkpoints (written before browser panes) still load.
+        var legacy = checkpoint
+        legacy.version = 1
+        let legacyDecoded = try JSONDecoder().decode(GoviRecoveryCheckpoint.self, from: JSONEncoder().encode(legacy))
+        precondition(legacyDecoded.isValid && legacyDecoded.workspaces[0].layout == layout)
+        // Only http, https and file addresses are kept, within the size limit.
+        for url in [
+            "javascript:alert(1)", "data:text/html,hi", "ftp://example.com", "https://", "not a url",
+            "https://example.com/" + String(repeating: "a", count: GoviWebPaneRecord.maxURLLength),
+        ] {
+            precondition(!GoviWorkspaceLayout.web(.init(id: UUID(), url: url, title: "")).isValid, url)
+        }
+        precondition(GoviWorkspaceLayout.web(.init(id: UUID(), url: "file:///tmp/index.html", title: "")).isValid)
+        // Duplicate IDs across terminal and browser panes are rejected.
+        precondition(
+            !GoviWorkspaceLayout.split(
+                vertical: true, ratio: 0.5, first: .terminal(first), second: .web(.init(id: first.id, url: "", title: ""))
+            ).isValid)
+        // Templates give browser panes new IDs but keep their addresses.
+        let mixedInstance = mixed.freshInstance()
+        precondition(mixedInstance.isValid)
+        precondition(Set(mixedInstance.paneIDs).isDisjoint(with: Set(mixed.paneIDs)))
+        precondition(mixedInstance.webPanes.map(\.url) == mixed.webPanes.map(\.url))
         precondition(GoviShell.quote("a'b;$(touch /tmp/no)") == "'a'\\''b;$(touch /tmp/no)'")
         let start = Date()
         let timeout = GoviLocalProcess.run("/bin/sleep", ["10"], timeout: 0.1)

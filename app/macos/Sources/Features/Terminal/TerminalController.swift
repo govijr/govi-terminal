@@ -34,7 +34,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
     init(_ ghostty: Ghostty.App,
          withBaseConfig base: Ghostty.SurfaceConfiguration? = nil,
-         withSurfaceTree tree: SplitTree<Ghostty.SurfaceView>? = nil,
+         withSurfaceTree tree: SplitTree<GoviPaneView>? = nil,
          parent: NSWindow? = nil
     ) {
         // The window we manage is not restorable if we've specified a command
@@ -113,7 +113,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
     // MARK: Base Controller Overrides
 
-    override func surfaceTreeDidChange(from: SplitTree<Ghostty.SurfaceView>, to: SplitTree<Ghostty.SurfaceView>) {
+    override func surfaceTreeDidChange(from: SplitTree<GoviPaneView>, to: SplitTree<GoviPaneView>) {
         super.surfaceTreeDidChange(from: from, to: to)
         
         // Whenever our surface tree changes in any way (new split, close split, etc.)
@@ -549,13 +549,15 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
     /// This is called anytime a node in the surface tree is being removed.
     override func closeSurface(
-        _ node: SplitTree<Ghostty.SurfaceView>.Node,
+        _ node: SplitTree<GoviPaneView>.Node,
         withConfirmation: Bool = true
     ) {
         // Shell integration reports an idle prompt as process_alive=false even
         // though the persistent shell is still running. A user close still needs
         // the keep/end choice; an actually exited attach process does not.
-        if node.leaves().allSatisfy({ GoviPersistence.isPersistent($0.id) && !$0.processExited }) {
+        if node.leaves().allSatisfy({
+            ($0 as? Ghostty.SurfaceView).map { GoviPersistence.isPersistent($0.id) && !$0.processExited } ?? false
+        }) {
             super.closeSurface(node, withConfirmation: true)
             return
         }
@@ -802,7 +804,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     /// Close all windows, asking for confirmation if necessary.
     static func closeAllWindows() {
         let needsConfirm: Bool = all.contains {
-            $0.surfaceTree.contains { GoviPersistence.needsConfirmClose($0) }
+            $0.surfaceTree.surfaces.contains { GoviPersistence.needsConfirmClose($0) }
         }
 
         if (!needsConfirm) {
@@ -849,7 +851,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     /// The state that we require to recreate a TerminalController from an undo.
     struct UndoState {
         let frame: NSRect
-        let surfaceTree: SplitTree<Ghostty.SurfaceView>
+        let surfaceTree: SplitTree<GoviPaneView>
         let focusedSurface: UUID?
         let tabIndex: Int?
         weak var tabGroup: NSWindowTabGroup?
@@ -934,7 +936,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         if case let .leaf(view) = surfaceTree.root {
             // If this is our first surface then our focused surface will be nil
             // so we force the focused surface to the leaf.
-            focusedSurface = view
+            focusedPane = view
 
             if let defaultSize {
                 window.setFrame(defaultSize, display: true)
@@ -1089,7 +1091,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             return
         }
 
-        guard surfaceTree.contains(where: { GoviPersistence.needsConfirmClose($0) }) else {
+        guard surfaceTree.surfaces.contains(where: { GoviPersistence.needsConfirmClose($0) }) else {
             closeTabImmediately()
             return
         }
@@ -1120,7 +1122,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             }
             
             // Check if any surfaces require confirmation
-            return controller.surfaceTree.contains(where: { GoviPersistence.needsConfirmClose($0) })
+            return controller.surfaceTree.surfaces.contains(where: { GoviPersistence.needsConfirmClose($0) })
         }) else {
             self.closeOtherTabsImmediately()
             return
@@ -1152,7 +1154,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             guard let controller = tabWindow.windowController as? TerminalController else {
                 return false
             }
-            return controller.surfaceTree.contains(where: { GoviPersistence.needsConfirmClose($0) })
+            return controller.surfaceTree.surfaces.contains(where: { GoviPersistence.needsConfirmClose($0) })
         }
 
         // If none need confirmation then we can just close all the windows.
