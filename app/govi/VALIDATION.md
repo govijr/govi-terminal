@@ -424,3 +424,42 @@ remaining-capacity calculation and ring fill apply uniformly: 100% is a full
 allowance and 0% is exhausted. Production ring views rendered with representative
 Claude, Codex and Grok readings were visually inspected at their actual 29-point
 size. `python3 govi/test-agent-usage.py` and `./govi/build.sh` passed again.
+
+## `govi` CLI, MCP server and control socket
+
+The app now listens on `control.sock` in its private support folder (0700
+folder, 0600 socket, same-user peers only, one JSON request and reply per
+connection, at most 16 at once, 90-second handler limit). Each shell gets
+`GOVI_CONTROL_SOCKET`, and `govi` ships in `Contents/MacOS`, which Ghostty puts
+on every shell's `PATH`. `govi mcp` serves the same commands as MCP tools over
+stdio (`claude mcp add govi -- govi mcp`).
+
+`./govi/test-cli.sh` passed 27 checks against a fake socket. They cover request
+shape and caller ID, argument parsing, stdin input, screenshot files, exit codes
+(1 for a Govi error, 2 for usage, 3 when the app isn't running), and MCP
+initialize, tools/list (15 tools), notifications, image content and tool errors.
+`test-layout.sh` and `test-workflows.sh` still pass.
+
+Live, against a separately identified review bundle and a local test page:
+- `send --enter` ran a command. Its shell had `GOVI_CONTROL_SOCKET` set, and
+  `which govi` resolved to the bundle.
+- `read` returned the output.
+- `split --cwd /tmp -- CMD` ran the command there and stayed open as a shell.
+- `browser open` and `snapshot` returned refs. `type --submit` submitted the
+  form. `click e3` worked twice.
+- `eval` returned expression, Promise, `undefined` and thrown-error results.
+- `console` captured the page's warn and log output.
+- `go`, `back`, `screenshot` (PNG) and MCP snapshot/screenshot calls worked.
+- `close` asked first on a persistent pane, and `--force` closed it.
+
+Bugs found and fixed during the live check:
+- Return sent as text landed inside the paste; it is now a real key press.
+- Accepted sockets were non-blocking, which cut off large replies.
+- Blank rows below the prompt are no longer counted by `read -n`.
+- Opaque "Script error." console entries are dropped.
+
+Not verified:
+- Agent use through a real MCP client.
+- Focus behaviour when the person is typing during an agent's split.
+- A first launch with no window: the CLI can't create a window yet, so
+  `govi split` and `browser open` fail until one exists.

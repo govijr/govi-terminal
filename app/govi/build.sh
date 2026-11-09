@@ -43,6 +43,12 @@ if [[ -f govi/Govi/Govi.icns ]]; then
   cp govi/Govi/Govi.icns dist/Govi.app/Contents/Resources/Govi.icns
   /usr/libexec/PlistBuddy -c 'Set :CFBundleIconFile Govi.icns' dist/Govi.app/Contents/Info.plist
 fi
+# The `govi` command. Ghostty puts Contents/MacOS on every shell's PATH, so
+# shells and agents inside Govi can run it without installing anything.
+# Use Xcode's own toolchain and SDK; the Zig shim above may point at the
+# Command Line Tools, whose SDK this compiler can't read.
+env -u DEVELOPER_DIR -u SDKROOT /usr/bin/xcrun swiftc -O -o .build/govi-cli govi/cli/main.swift
+cp .build/govi-cli dist/Govi.app/Contents/MacOS/govi
 # Ad-hoc signatures change with every build, so macOS forgets Keychain
 # "Always Allow" grants. Prefer a stable local identity when one exists.
 sign_identity=${GOVI_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -nE 's/.*"(Apple Development: [^"]+)".*/\1/p' | head -1)}

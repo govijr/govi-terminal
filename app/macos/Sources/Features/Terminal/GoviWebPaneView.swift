@@ -23,15 +23,25 @@ final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
 
     let webView: WKWebView
     private var observers: [NSKeyValueObservation] = []
+    /// When the pane last had focus; `govi browser` with no pane uses the newest.
+    private(set) var lastActive = Date()
+    /// Recent console output and uncaught errors, newest last, for agents.
+    var consoleEntries: [[String: Any]] = []
+    static let maxConsoleEntries = 500
 
     init(id: UUID = UUID(), url: URL? = nil, title: String = "") {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        let console = ConsoleRelay()
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: Self.consoleScript, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+        configuration.userContentController.add(console, contentWorld: .page, name: ConsoleRelay.name)
         let webView = FocusReportingWebView(frame: .zero, configuration: configuration)
         self.webView = webView
         self.pageTitle = title
         super.init(id: id, frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         webView.pane = self
+        console.pane = self
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
@@ -73,6 +83,7 @@ final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
 
     deinit {
         observers.forEach { $0.invalidate() }
+        webView.configuration.userContentController.removeAllScriptMessageHandlers()
     }
 
     // MARK: Pane
@@ -85,6 +96,9 @@ final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
     }
     override var paneIcon: String { "globe" }
     override var paneFocusTarget: NSView { webView }
+    override func paneFocusDidChange(_ focused: Bool) {
+        if focused { lastActive = Date() }
+    }
 
     // MARK: Navigation
 
@@ -210,5 +224,243 @@ private final class FocusReportingWebView: WKWebView {
         let result = super.becomeFirstResponder()
         if result { DispatchQueue.main.async { [weak self] in self?.pane?.reportFocus() } }
         return result
+    }
+}
+
+// MARK: - Automation for `govi browser` and the MCP server
+
+/// An element named by a ref from `snapshot()` or by a CSS selector.
+enum GoviWebTarget {
+    case ref(String)
+    case selector(String)
+
+    var selector: String {
+        switch self {
+        case .ref(let ref): "[data-govi-ref=\"\(ref.replacingOccurrences(of: "\"", with: ""))\"]"
+        case .selector(let selector): selector
+        }
+    }
+}
+
+@MainActor
+extension GoviWebPaneView {
+    var summary: [String: Any] {
+        var info: [String: Any] = [
+            "pane": id.uuidString, "url": webView.url?.absoluteString ?? "", "title": webView.title ?? "",
+            "loading": webView.isLoading,
+        ]
+        if let problem { info["problem"] = problem }
+        return info
+    }
+
+    /// Waits until the page stops loading. A quiet wait never throws; it's used
+    /// after clicks, which may or may not navigate.
+    func waitForLoad(timeout: TimeInterval, quietly: Bool = false) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        while webView.isLoading {
+            if Date() > deadline {
+                if quietly { return }
+                throw GoviControlError("The page is still loading after \(Int(timeout)) seconds.")
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        if !quietly, let problem { throw GoviControlError(problem) }
+    }
+
+    /// The page's text and its interactive elements, each tagged with a ref
+    /// that `click` and `type` accept.
+    func snapshot(maxText: Int) async throws -> Any {
+        var result = try await run(Self.snapshotScript, arguments: ["maxText": max(0, min(maxText, 500_000))])
+        if var info = result as? [String: Any] {
+            info["pane"] = id.uuidString
+            result = info
+        }
+        return result
+    }
+
+    func click(target: GoviWebTarget) async throws -> Any {
+        try await run(Self.clickScript, arguments: ["selector": target.selector])
+    }
+
+    func type(_ text: String, into target: GoviWebTarget, submit: Bool) async throws -> Any {
+        try await run(Self.typeScript, arguments: ["selector": target.selector, "text": text, "submit": submit])
+    }
+
+    /// Runs JavaScript in the page. An expression's value is returned; for
+    /// statements, `return` a value. Promises are awaited.
+    func evaluate(_ source: String) async throws -> Any {
+        do {
+            return try await run("const __value = await (\n\(source)\n);\nreturn __goviValue(__value);", arguments: [:], prelude: true)
+        } catch let error as GoviControlError where error.message.contains("SyntaxError") {
+            return try await run("const __value = await (async () => {\n\(source)\n})();\nreturn __goviValue(__value);", arguments: [:], prelude: true)
+        }
+    }
+
+    func screenshotPNG() async throws -> Data {
+        guard webView.window != nil, webView.bounds.width > 0, webView.bounds.height > 0 else {
+            throw GoviControlError("The browser pane isn't on screen, so it can't be captured.")
+        }
+        let image: NSImage = try await withCheckedThrowingContinuation { continuation in
+            webView.takeSnapshot(with: nil) { image, error in
+                if let image { continuation.resume(returning: image) } else {
+                    continuation.resume(throwing: GoviControlError(error?.localizedDescription ?? "WebKit didn't return a picture."))
+                }
+            }
+        }
+        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+            let png = bitmap.representation(using: .png, properties: [:])
+        else { throw GoviControlError("Govi couldn't encode the screenshot.") }
+        return png
+    }
+
+    func recordConsole(_ body: Any) {
+        guard var entry = body as? [String: Any] else { return }
+        if let text = entry["text"] as? String, text.count > 4000 { entry["text"] = String(text.prefix(4000)) + "…" }
+        entry["url"] = webView.url?.absoluteString ?? ""
+        consoleEntries.append(entry)
+        if consoleEntries.count > Self.maxConsoleEntries { consoleEntries.removeFirst(consoleEntries.count - Self.maxConsoleEntries) }
+    }
+
+    /// Scripts return JSON text, which avoids WebKit's value bridging and its
+    /// trouble with `undefined`; `{"__goviError": ...}` becomes a Govi error.
+    private func run(_ body: String, arguments: [String: Any], prelude: Bool = false) async throws -> Any {
+        let source = (prelude ? Self.valuePrelude : "") + body
+        let text: Any? = try await withCheckedThrowingContinuation { continuation in
+            webView.callAsyncJavaScript(source, arguments: arguments, in: nil, in: .page) { result in
+                switch result {
+                case .success(let value): continuation.resume(returning: value)
+                case .failure(let error):
+                    let info = (error as NSError).userInfo
+                    let message = info["WKJavaScriptExceptionMessage"] as? String ?? error.localizedDescription
+                    continuation.resume(throwing: GoviControlError("JavaScript error: \(message)"))
+                }
+            }
+        }
+        guard let text = text as? String else { return NSNull() }
+        let value = (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])) ?? text
+        if let failure = (value as? [String: Any])?["__goviError"] as? String { throw GoviControlError(failure) }
+        return value
+    }
+
+    private static let valuePrelude = #"""
+        const __goviValue = (value) => {
+          if (value === undefined) return JSON.stringify(null);
+          if (value instanceof Element) return JSON.stringify(value.outerHTML.slice(0, 20000));
+          if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") return JSON.stringify(String(value));
+          const seen = new WeakSet();
+          try {
+            return JSON.stringify(value, (key, item) => {
+              if (typeof item === "object" && item !== null) { if (seen.has(item)) return "[Circular]"; seen.add(item); }
+              if (item instanceof Node) return "[" + item.nodeName + "]";
+              if (typeof item === "bigint" || typeof item === "function") return String(item);
+              return item;
+            });
+          } catch (error) { return JSON.stringify(String(value)); }
+        };
+
+        """#
+
+    static let snapshotScript = #"""
+        const query = 'a[href], button, input, select, textarea, summary, [contenteditable=""], [contenteditable="true"],'
+          + ' [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=switch],'
+          + ' [role=option], [role=combobox], [role=textbox], [onclick], [tabindex]:not([tabindex="-1"])';
+        document.querySelectorAll('[data-govi-ref]').forEach(el => el.removeAttribute('data-govi-ref'));
+        const visible = el => {
+          const box = el.getBoundingClientRect();
+          if (box.width < 1 || box.height < 1) return false;
+          const style = getComputedStyle(el);
+          return style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+        };
+        const clip = (text, size) => (text || '').replace(/\s+/g, ' ').trim().slice(0, size);
+        const elements = [];
+        let count = 0;
+        for (const el of document.querySelectorAll(query)) {
+          if (elements.length >= 400) break;
+          if (!visible(el)) continue;
+          const ref = 'e' + (++count);
+          el.setAttribute('data-govi-ref', ref);
+          const tag = el.tagName.toLowerCase();
+          const label = el.labels && el.labels[0] ? el.labels[0].innerText : '';
+          const item = { ref, tag, name: clip(el.getAttribute('aria-label') || label || el.innerText || el.value
+            || el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('alt') || el.getAttribute('name'), 100) };
+          const role = el.getAttribute('role'); if (role) item.role = role;
+          if (el.type && tag === 'input') item.type = el.type;
+          if (['input', 'textarea', 'select'].includes(tag) && el.type !== 'password') item.value = clip(String(el.value ?? ''), 200);
+          if (el.checked) item.checked = true;
+          if (el.disabled) item.disabled = true;
+          if (tag === 'a') item.href = el.href;
+          elements.push(item);
+        }
+        const text = document.body ? document.body.innerText : '';
+        return JSON.stringify({ url: location.href, title: document.title, text: text.slice(0, maxText),
+          truncated: text.length > maxText, elements });
+        """#
+
+    static let clickScript = #"""
+        let el;
+        try { el = document.querySelector(selector); } catch (error) { return JSON.stringify({ __goviError: 'That selector is not valid CSS.' }); }
+        if (!el) return JSON.stringify({ __goviError: 'No element matches ' + selector + '. Take a new snapshot; refs change when the page does.' });
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+        if (el.focus) el.focus();
+        el.click();
+        return JSON.stringify({ clicked: el.tagName.toLowerCase(), text: (el.innerText || el.value || '').trim().slice(0, 100) });
+        """#
+
+    static let typeScript = #"""
+        let el;
+        try { el = document.querySelector(selector); } catch (error) { return JSON.stringify({ __goviError: 'That selector is not valid CSS.' }); }
+        if (!el) return JSON.stringify({ __goviError: 'No element matches ' + selector + '. Take a new snapshot; refs change when the page does.' });
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+        if (el.focus) el.focus();
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+          const prototype = tag === 'textarea' ? HTMLTextAreaElement.prototype : tag === 'select' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+          Object.getOwnPropertyDescriptor(prototype, 'value').set.call(el, text);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (el.isContentEditable) {
+          document.execCommand('selectAll', false);
+          document.execCommand('insertText', false, text);
+        } else {
+          return JSON.stringify({ __goviError: 'That element is a ' + tag + ', which does not take text.' });
+        }
+        if (submit) {
+          const options = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+          const proceed = el.dispatchEvent(new KeyboardEvent('keydown', options));
+          el.dispatchEvent(new KeyboardEvent('keyup', options));
+          if (proceed && el.form) { el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit(); }
+        }
+        return JSON.stringify({ typed: text.length, into: tag, submitted: !!submit });
+        """#
+
+    static let consoleScript = #"""
+        (() => {
+          const relay = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.goviConsole;
+          if (!relay || window.__goviConsole) return;
+          window.__goviConsole = true;
+          const show = value => {
+            if (typeof value === 'string') return value;
+            if (value instanceof Error) return value.stack || String(value);
+            try { return JSON.stringify(value); } catch (error) { return String(value); }
+          };
+          const send = (level, text) => { try { relay.postMessage({ level, text, time: Date.now() }); } catch (error) {} };
+          for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+            const original = console[level];
+            console[level] = function (...args) { send(level, args.map(show).join(' ')); return original.apply(this, args); };
+          }
+          window.addEventListener('error', event => !event.filename && event.message === 'Script error.' ? null : send('error', (event.message || 'Error') + (event.filename ? ' at ' + event.filename + ':' + event.lineno : '')));
+          window.addEventListener('unhandledrejection', event => send('error', 'Unhandled rejection: ' + show(event.reason)));
+        })();
+        """#
+}
+
+/// Receives console messages without the content controller retaining the pane.
+private final class ConsoleRelay: NSObject, WKScriptMessageHandler {
+    static let name = "goviConsole"
+    weak var pane: GoviWebPaneView?
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        MainActor.assumeIsolated { pane?.recordConsole(message.body) }
     }
 }

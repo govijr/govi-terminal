@@ -499,6 +499,9 @@ extension Ghostty {
             variables["GOVI_NOTIFY"] = GoviResources.resourceURL.appendingPathComponent("Tools/govi-notify").path
             if let path = GoviInlineService.shared.start() { variables["GOVI_SUGGEST_SOCKET"] = path }
             else { variables["GOVI_SUGGEST_SOCKET"] = "" }
+            // The control socket behind the `govi` command; its path is stable
+            // so shells kept by persistent sessions keep working after relaunch.
+            if let path = GoviControlServer.shared.start() { variables[GoviControlServer.environmentKey] = path }
 
             // Govi: with persistent sessions on, run the program in a herdr-core
             // terminal and attach this pane to it.

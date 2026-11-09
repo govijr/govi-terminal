@@ -32,6 +32,7 @@
 		602222222222222222222203 /* GoviPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603333333333333333333303; };
 		6A1E0C0DE0000000000000B1 /* GoviWebPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1E0C0DE0000000000000B2; };
 		6A1E0C0DE0000000000000A1 /* GoviPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1E0C0DE0000000000000A2; };
+		6A1E0C0DE0000000000000C1 /* GoviControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1E0C0DE0000000000000C2; };
 		602222222222222222222202 /* GoviAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603333333333333333333302; };
 		601111111111111111111101 /* GoviWorkbench.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601111111111111111111102 /* GoviWorkbench.swift */; };
 		6011111111111111111111C1 /* GoviChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6011111111111111111111C2 /* GoviChrome.swift */; };
@@ -161,6 +162,7 @@
 		603333333333333333333303 /* GoviPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviPane.swift; sourceTree = "<group>"; };
 		6A1E0C0DE0000000000000B2 /* GoviWebPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviWebPaneView.swift; sourceTree = "<group>"; };
 		6A1E0C0DE0000000000000A2 /* GoviPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviPaneView.swift; sourceTree = "<group>"; };
+		6A1E0C0DE0000000000000C2 /* GoviControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviControl.swift; sourceTree = "<group>"; };
 		603333333333333333333302 /* GoviAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviAppearance.swift; sourceTree = "<group>"; };
 		601111111111111111111102 /* GoviWorkbench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviWorkbench.swift; sourceTree = "<group>"; };
 		6011111111111111111111C2 /* GoviChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviChrome.swift; sourceTree = "<group>"; };
@@ -524,6 +526,7 @@
 				603333333333333333333303 /* GoviPane.swift */,
 				6A1E0C0DE0000000000000B2 /* GoviWebPaneView.swift */,
 				6A1E0C0DE0000000000000A2 /* GoviPaneView.swift */,
+				6A1E0C0DE0000000000000C2 /* GoviControl.swift */,
 				603333333333333333333302 /* GoviAppearance.swift */,
 				A535B9D9299C569B0017E2E4 /* ErrorView.swift */,
 				A54D786B2CA79788001B19B1 /* BaseTerminalController.swift */,
@@ -806,6 +809,7 @@
 				602222222222222222222203 /* GoviPane.swift in Sources */,
 				6A1E0C0DE0000000000000B1 /* GoviWebPaneView.swift in Sources */,
 				6A1E0C0DE0000000000000A1 /* GoviPaneView.swift in Sources */,
+				6A1E0C0DE0000000000000C1 /* GoviControl.swift in Sources */,
 				602222222222222222222202 /* GoviAppearance.swift in Sources */,
 				A58636662DEF964100E04A10 /* TerminalSplitTreeView.swift in Sources */,
 				A52FFF592CAA4FF3000C6A5B /* Fullscreen.swift in Sources */,
