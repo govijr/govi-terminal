@@ -1,0 +1,25 @@
+//! Build logic for Ghostty. A single "build.zig" file became far too complex
+//! and spaghetti, so this package extracts the build logic into smaller,
+//! more manageable pieces.
+
+pub const Config = @import("Config.zig");
+pub const GitVersion = @import("GitVersion.zig");
+
+// Artifacts
+pub const GhosttyFrameData = @import("GhosttyFrameData.zig");
+pub const GhosttyLib = @import("GhosttyLib.zig");
+pub const GhosttyResources = @import("GhosttyResources.zig");
+pub const GhosttyXcodebuild = @import("GhosttyXcodebuild.zig");
+pub const GhosttyXCFramework = @import("GhosttyXCFramework.zig");
+pub const HelpStrings = @import("HelpStrings.zig");
+pub const SharedDeps = @import("SharedDeps.zig");
+pub const UnicodeTables = @import("UnicodeTables.zig");
+
+// Steps
+pub const LibtoolStep = @import("LibtoolStep.zig");
+pub const LipoStep = @import("LipoStep.zig");
+pub const MetallibStep = @import("MetallibStep.zig");
+pub const XCFrameworkStep = @import("XCFrameworkStep.zig");
+
+// Helpers
+pub const requireZig = @import("zig.zig").requireZig;

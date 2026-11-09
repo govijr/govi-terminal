@@ -1,0 +1,16 @@
+#!/bin/zsh -f
+# Local agent status only. Does not read hook stdin, prompts or tool output.
+# Usage from an agent hook: /bin/zsh -f "$GOVI_NOTIFY" working|needsInput|done|error|idle [label]
+emulate -L zsh
+setopt extendedglob
+[[ -n ${GOVI_SESSION_ID:-} && -n ${GOVI_SUGGEST_SOCKET:-} && -S $GOVI_SUGGEST_SOCKET ]] || exit 0
+case ${1:-} in working|needsInput|done|error|idle) ;; *) exit 0 ;; esac
+[[ $GOVI_SESSION_ID == [[:xdigit:]]##-[[:xdigit:]]##-[[:xdigit:]]##-[[:xdigit:]]##-[[:xdigit:]]## ]] || exit 0
+label=${2:-}
+label=${label[1,256]}
+label=${label//[[:cntrl:]]/ }
+label=${label//\\/\\\\}
+label=${label//\"/\\\"}
+printf 'A\t0\t{"id":"%s","state":"%s","label":"%s"}\n' "$GOVI_SESSION_ID" "$1" "$label" |
+  /usr/bin/nc -w 1 -U "$GOVI_SUGGEST_SOCKET" >/dev/null 2>&1
+exit 0

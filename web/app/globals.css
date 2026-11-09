@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/* Run only once JS is on and the intro hasn't finished (the splash is hidden without JS). */
+@custom-variant js (html[data-js] &);
+@custom-variant intro-pending (html[data-js]:not([data-intro="done"]) &);
+
+/* Palette taken from the Mac app's default Paper (light) and Graphite (dark) themes. */
+:root {
+  --canvas: #f5f5f3;
+  --surface: #ffffff;
+  --ink: #292929;
+  --muted: #767672;
+  --line: #e5e5e1;
+  color-scheme: light;
+
+  /* Feature colors for the home page paragraph (readable on the light canvas). */
+  --feat-workspaces: #2563eb;
+  --feat-recovery: #0f766e;
+  --feat-agents: #7c3aed;
+  --feat-attention: #c2410c;
+  --feat-tasks: #db2777;
+  --feat-pulls: #4f46e5;
+  --feat-git: #15803d;
+  --feat-find: #b45309;
+  --feat-palette: #0e7490;
+  --feat-remote: #dc2626;
+  --feat-suggest: #4d7c0f;
+  --feat-themes: #a21caf;
+  --feat-splits: #0284c7;
+  /* Text on a feature-colored tooltip. */
+  --feat-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #121212;
+    --surface: #1b1b1b;
+    --ink: #d8dce3;
+    --muted: #878e99;
+    --line: #303030;
+    color-scheme: dark;
+    --feat-workspaces: #60a5fa;
+    --feat-recovery: #2dd4bf;
+    --feat-agents: #a78bfa;
+    --feat-attention: #fb923c;
+    --feat-tasks: #f472b6;
+    --feat-pulls: #818cf8;
+    --feat-git: #4ade80;
+    --feat-find: #fbbf24;
+    --feat-palette: #22d3ee;
+    --feat-remote: #f87171;
+    --feat-suggest: #bef264;
+    --feat-themes: #e879f9;
+    --feat-splits: #38bdf8;
+    --feat-ink: #121212;
+  }
+}
+
+:root[data-theme="dark"] {
+  --canvas: #121212;
+  --surface: #1b1b1b;
+  --ink: #d8dce3;
+  --muted: #878e99;
+  --line: #303030;
+  color-scheme: dark;
+  --feat-workspaces: #60a5fa;
+  --feat-recovery: #2dd4bf;
+  --feat-agents: #a78bfa;
+  --feat-attention: #fb923c;
+  --feat-tasks: #f472b6;
+  --feat-pulls: #818cf8;
+  --feat-git: #4ade80;
+  --feat-find: #fbbf24;
+  --feat-palette: #22d3ee;
+  --feat-remote: #f87171;
+  --feat-suggest: #bef264;
+  --feat-themes: #e879f9;
+  --feat-splits: #38bdf8;
+  --feat-ink: #121212;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --ease-glide: cubic-bezier(0.45, 0.05, 0.35, 1);
+}

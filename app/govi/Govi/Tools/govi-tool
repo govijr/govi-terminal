@@ -1,0 +1,109 @@
+#!/bin/bash
+# Govi tool launcher. Govi runs this in a new split pane:
+#
+#   govi-tool <code|browser|phone|mac> [arguments for the tool...]
+#
+# If the tool is installed it replaces this script with the tool itself.
+# If not, it shows the official install command and runs it only when the
+# user answers yes. Nothing is installed or downloaded without that answer.
+set -u
+
+usage() {
+  echo "usage: govi-tool <code|browser|phone|mac> [args...]" >&2
+  exit 2
+}
+
+[ $# -ge 1 ] || usage
+tool=$1
+shift
+
+case $tool in
+  recovery)
+    name="Govi session helper (herdr-core)"
+    about="Keeps terminal programs running while Govi is closed. After setup, return to Settings → Agents and choose Check Again."
+    binary="hc"
+    install="curl -fsSL https://releases.herdr.dev/core/install.sh | sh"
+    home="https://herdr.dev"
+    set -- --version
+    ;;
+  code)
+    name="terminal-code"
+    about="VS Code inside your terminal."
+    binary="tode"
+    install="curl -fsSL https://tode.sh/install | bash"
+    home="https://github.com/zenbu-labs/terminal-code"
+    ;;
+  browser)
+    name="terminal-browser"
+    about="A real browser inside your terminal."
+    binary="terminal-browser"
+    install="curl -fsSL https://terminal-browser.sh/install | bash"
+    home="https://github.com/zenbu-labs/terminal-browser"
+    ;;
+  phone)
+    name="terminal-phone"
+    about="An interactive iPhone simulator in your terminal. Needs Xcode 26 or later."
+    binary="terminal-phone"
+    install="curl -fsSL https://raw.githubusercontent.com/govijr/terminal-phone/main/install.sh | bash"
+    home="https://github.com/govijr/terminal-phone"
+    ;;
+  mac)
+    name="terminal-mac"
+    about="A separate macOS virtual machine in your terminal. The first run downloads macOS from Apple."
+    binary="terminal-mac"
+    install="curl -fsSL https://github.com/govijr/terminal-mac/releases/latest/download/get.sh | bash"
+    home="https://github.com/govijr/terminal-mac"
+    ;;
+  *)
+    usage
+    ;;
+esac
+
+# Installers put binaries in places that a running shell may not have on
+# PATH yet, so look there too.
+find_binary() {
+  local found dir
+  found=$(command -v "$binary" 2>/dev/null) && [ -x "$found" ] && { echo "$found"; return 0; }
+  for dir in "$HOME/.local/bin" "$HOME/.bun/bin" "$HOME/.tode/bin" "$HOME/.terminal-browser/bin" \
+             "$HOME/bin" /opt/homebrew/bin /usr/local/bin; do
+    [ -x "$dir/$binary" ] && { echo "$dir/$binary"; return 0; }
+  done
+  return 1
+}
+
+if path=$(find_binary); then
+  exec "$path" "$@"
+fi
+
+bold=$(printf '\033[1m'); dim=$(printf '\033[2m'); reset=$(printf '\033[0m')
+printf '\n  %s%s is not installed.%s\n' "$bold" "$name" "$reset"
+printf '  %s\n\n' "$about"
+printf '  %sInstall command (from %s):%s\n' "$dim" "$home" "$reset"
+printf '    %s\n\n' "$install"
+printf '  Install %s now? [y/N] ' "$name"
+read -r answer || answer=""
+case $answer in
+  [yY] | [yY][eE][sS]) ;;
+  *)
+    printf '\n  Not installed. Closing this pane.\n'
+    sleep 1
+    exit 0
+    ;;
+esac
+
+printf '\n'
+if ! /bin/bash -c "$install"; then
+  printf '\n  %sThe installer failed.%s Press Return to close this pane.' "$bold" "$reset"
+  read -r _
+  exit 1
+fi
+
+if ! path=$(find_binary); then
+  printf '\n  Installed, but %s was not found on PATH.\n' "$binary"
+  printf '  Open a new terminal and run %s. Press Return to close this pane.' "$binary"
+  read -r _
+  exit 1
+fi
+
+printf '\n  Starting %s...\n' "$name"
+exec "$path" "$@"

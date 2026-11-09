@@ -1,25 +1,20 @@
-*~
-.*.swp
-.swp
-*.log
+# macOS
 .DS_Store
+
+# Editor / language-server state (machine-specific paths)
+buildServer.json
 .vscode/
-.direnv/
-.envrc.local
-.flatpak-builder/
-zig-cache/
+
+# LLVM coverage output
+*.profraw
+
+# Build output is also ignored in app/.gitignore and web/.gitignore;
+# these entries keep a stray `git add -A` from the root safe.
+app/.build/
+app/.tools/
+app/dist/
+app/zig-out/
 .zig-cache/
-zig-out/
-/result*
-example/*.wasm
-test/ghostty
-test/cases/**/*.actual.png
-flatpak/builddir/
-flatpak/repo/
-
-glad.zip
-/Box_test.ppm
-/Box_test_diff.ppm
-/ghostty.qcow2
-
-vgcore.*
+zig-cache/
+node_modules/
+.next/
