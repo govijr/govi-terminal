@@ -112,7 +112,14 @@ jobs:
           key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('app/build.zig.zon', 'app/govi/bootstrap-zig.sh', 'app/govi/build.sh') }}
           restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Build Govi.app
-        run: ./govi/build.sh
+        # Zig 0.14.1 links only against the macOS 26.0 SDK, so Zig uses
+        # Xcode 26.0.1 while the Swift app builds with the runner's default Xcode.
+        env:
+          GOVI_ZIG_DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+        run: |
+          xcrun --sdk macosx --show-sdk-version
+          DEVELOPER_DIR="$GOVI_ZIG_DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-version
+          ./govi/build.sh
       - name: Check the app bundle
         run: |
           set -euo pipefail
