@@ -561,7 +561,7 @@ extension Ghostty {
                 return false // Govi does not use the upstream updater.
                 
             case GHOSTTY_ACTION_OPEN_URL:
-                return openURL(action.action.open_url)
+                return openURL(action.action.open_url, target: target)
 
             case GHOSTTY_ACTION_UNDO:
                 return undo(app, target: target)
@@ -611,7 +611,8 @@ extension Ghostty {
 
 
         private static func openURL(
-            _ v: ghostty_action_open_url_s
+            _ v: ghostty_action_open_url_s,
+            target: ghostty_target_s
         ) -> Bool {
             let action = Ghostty.Action.OpenURL(c: v)
             
@@ -624,6 +625,16 @@ extension Ghostty {
                 url = candidate
             } else {
                 url = URL(filePath: action.url)
+            }
+
+            // Govi: local dev-server links open in a browser pane beside the
+            // terminal, and text files (with an optional :line) in an editor pane.
+            // Other files and web pages get a Quick Look preview over the window.
+            if target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface,
+               let view = surfaceView(from: surface),
+               GoviLinkRouter.open(url, from: view) || (url.isFileURL && GoviLinkRouter.openFile(action.url, from: view))
+                || GoviQuickLook.shared.previewClicked(action.url, from: view) {
+                return true
             }
             
             switch action.kind {

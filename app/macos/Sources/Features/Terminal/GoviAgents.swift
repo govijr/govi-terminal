@@ -258,6 +258,10 @@ struct GoviAgentMenu: View {
                 dismiss()
                 TerminalController.preferredParent?.openWebPane()
             }
+            GoviMenuRow(title: "Editor", trailing: shortcuts.chord(.editor).display, icon: { Image(systemName: "chevron.left.forwardslash.chevron.right") }) {
+                dismiss()
+                TerminalController.preferredParent?.openEditorPane()
+            }
             GoviMenuRow(title: "Remote hosts…", trailing: shortcuts.chord(.remoteHosts).display, icon: { Image(systemName: "server.rack") })
             {
                 dismiss()

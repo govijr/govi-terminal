@@ -419,7 +419,7 @@ struct GoviActivitySettingsView: View {
             Divider()
             GoviPersistenceSettingsView()
             Text(
-                "Status comes from agent hooks and terminal signals. Govi doesn't read screen contents. Opening a terminal marks its attention item as seen."
+                "Status comes from agent hooks and terminal signals, not from what's on screen. Opening a terminal marks its attention item as seen."
             )
             .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
         }

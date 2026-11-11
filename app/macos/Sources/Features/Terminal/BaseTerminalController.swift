@@ -52,6 +52,9 @@ class BaseTerminalController: NSWindowController,
         didSet { surfaceTreeDidChange(from: oldValue, to: surfaceTree) }
     }
 
+    /// Panes popped out of the split layout. They remain leaves of `surfaceTree`.
+    let floating = GoviFloatingPanes()
+
     /// This can be set to show/hide the command palette.
     @Published var commandPaletteIsShowing: Bool = false
 
@@ -119,6 +122,7 @@ class BaseTerminalController: NSWindowController,
         self.derivedConfig = DerivedConfig(ghostty.config)
 
         super.init(window: nil)
+        floating.controller = self
 
         // Initialize our initial surface.
         guard let ghostty_app = ghostty.app else { preconditionFailure("app must be loaded") }
@@ -247,6 +251,7 @@ class BaseTerminalController: NSWindowController,
         if (to.isEmpty) {
             focusedSurface = nil
         }
+        floating.prune(keeping: Set(to.map(\.id)))
         NotificationCenter.default.post(name: .goviLayoutChanged, object: nil)
     }
 
@@ -342,6 +347,13 @@ class BaseTerminalController: NSWindowController,
         // If the child process is not alive, then we exit immediately
         guard withConfirmation else {
             removeSurfaceNode(node)
+            return
+        }
+
+        // Govi: editors with unsaved changes ask first.
+        let unsaved = node.leaves().compactMap { $0 as? GoviEditorPaneView }.filter(\.isDirty)
+        if !unsaved.isEmpty {
+            GoviUnsavedEdits.resolve(unsaved, window: window) { [weak self] in self?.closeSurface(node, withConfirmation: true) }
             return
         }
 
@@ -962,6 +974,12 @@ class BaseTerminalController: NSWindowController,
 
         // If we already have an alert, continue with it
         guard alert == nil else { return false }
+
+        // Govi: editors with unsaved changes ask first, then the close resumes.
+        if !unsavedEditors.isEmpty {
+            GoviUnsavedEdits.resolve(unsavedEditors, window: window) { window.performClose(nil) }
+            return false
+        }
 
         // If our surfaces don't require confirmation, close.
         if !surfaceTree.surfaces.contains(where: { GoviPersistence.needsConfirmClose($0) }) {

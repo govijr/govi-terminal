@@ -298,7 +298,7 @@ enum GoviControl {
     static func describe(_ pane: GoviPaneView, in controller: TerminalController, caller: UUID?) -> [String: Any] {
         var info: [String: Any] = [
             "id": pane.id.uuidString,
-            "kind": pane is GoviWebPaneView ? "browser" : "terminal",
+            "kind": pane is GoviWebPaneView ? "browser" : pane is GoviEditorPaneView ? "editor" : "terminal",
             "title": pane.paneTitle,
             "focused": controller.focusedPane === pane && controller.window?.isKeyWindow == true,
             "self": pane.id == caller,

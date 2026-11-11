@@ -2,6 +2,7 @@
 
 - GoviWordmark.png: original image supplied by the user. Rendered as a theme-tinted mask without redrawing the lettering.
 - Claude, Codex/OpenAI, Cursor, Grok, OpenCode glyphs: vinzdg/codenotch, commit 183fc2f835dbe46855cf1bf0f7c03e05d5f811c8, windows/codenotch/glyphs. Original brands retain their marks. MIT notice included in ../Licenses/CodeNotch-LICENSE.txt.
+- File-type icons in ../FileIcons: material-extensions/vscode-material-icon-theme, npm material-icon-theme 5.40.0 (integrity sha512-IrvgusbwtqxhUtVgUy0nToJcfN7CYVRdbBxKMfbo0vab9flVBHA5INZ9UiE5SgRj+PM6opCl5nn5TZdpm2UaxA==), icons/*.svg copied unmodified. Language and product logos remain their owners' marks. MIT notice included in ../Licenses/MaterialIconTheme-LICENSE.txt.
 - Pi: official earendil-works/pi repository, apps/p2/public/icons/favicon.svg.
 - Usage endpoint and credential-format references: https://github.com/vinzdg/codenotch/tree/183fc2f835dbe46855cf1bf0f7c03e05d5f811c8/Sources/Providers . Govi has an independent, narrower read-only integration. It does not install CodeNotch or invoke model requests.
 - Codex usage semantics: https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt (the provider reports consumed percentages).

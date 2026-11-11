@@ -31,6 +31,9 @@ protocol TerminalViewModel: ObservableObject {
 
     /// The command palette state.
     var commandPaletteIsShowing: Bool { get set }
+
+    /// Panes detached from the split layout into floating panels.
+    var floating: GoviFloatingPanes { get }
 }
 
 /// The main terminal view. This terminal view supports splits.
@@ -85,6 +88,7 @@ struct TerminalView<ViewModel: TerminalViewModel>: View {
                     ) {
                     TerminalSplitTreeView(
                         tree: viewModel.surfaceTree,
+                        floating: viewModel.floating,
                         onResize: { delegate?.splitDidResize(node: $0, to: $1) })
                         .environmentObject(ghostty)
                         .focused($focused)
@@ -105,6 +109,7 @@ struct TerminalView<ViewModel: TerminalViewModel>: View {
                             self.delegate?.cellSizeDidChange(to: size)
                         }
                     }
+                    .environment(\.goviFloatingPanes, viewModel.floating)
                 }
                 // Ignore safe area to extend up in to the titlebar region if we have the "hidden" titlebar style
                 .ignoresSafeArea(.container, edges: ghostty.config.macosTitlebarStyle == "hidden" ? .top : [])

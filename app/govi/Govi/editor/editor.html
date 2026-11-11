@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Govi Editor</title>
+<style>
+  html, body, #editor { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: var(--govi-background, transparent); }
+  /* Monaco outlines the whole editor while it has focus; the pane already shows focus. */
+  .monaco-editor { outline: none !important; }
+</style>
+<link rel="stylesheet" href="vs/editor/editor.main.css">
+</head>
+<body>
+<div id="editor"></div>
+<script src="vs/loader.js"></script>
+<script>
+  // Govi's editor pane. Swift calls window.govi.*; the page reports back
+  // through the goviEditor message handler. Files never load by URL: Swift
+  // reads them and passes their text, so this page can't reach the disk.
+  (() => {
+    const post = message => {
+      try { window.webkit.messageHandlers.goviEditor.postMessage(message); } catch (error) {}
+    };
+    let editor = null;
+    let savedVersion = 0;
+    let wasDirty = false;
+    const dirtyNow = () => !!editor && !!editor.getModel() && editor.getModel().getAlternativeVersionId() !== savedVersion;
+    const reportDirty = () => {
+      const dirty = dirtyNow();
+      if (dirty !== wasDirty) { wasDirty = dirty; post({ type: 'dirty', dirty }); }
+    };
+
+    window.govi = {
+      open({ path, text, line, column, readOnly }) {
+        const previous = editor.getModel();
+        const model = monaco.editor.createModel(text, undefined, monaco.Uri.file(path));
+        model.detectIndentation(true, 4);
+        editor.setModel(model);
+        if (previous) previous.dispose();
+        editor.updateOptions({ readOnly: !!readOnly });
+        savedVersion = model.getAlternativeVersionId();
+        wasDirty = false;
+        model.onDidChangeContent(reportDirty);
+        this.reveal(line || 1, column || 1);
+        editor.focus();
+        return model.getLanguageId();
+      },
+      reveal(line, column) {
+        const position = { lineNumber: Math.max(1, line), column: Math.max(1, column || 1) };
+        editor.setPosition(position);
+        editor.revealPositionInCenterIfOutsideViewport(position);
+      },
+      // The text and the version it belongs to, so a save marks only what it wrote.
+      snapshot() {
+        const model = editor.getModel();
+        return model ? { text: model.getValue(), version: model.getAlternativeVersionId() } : null;
+      },
+      markSaved(version) { savedVersion = version; reportDirty(); return dirtyNow(); },
+      focus() { editor && editor.focus(); },
+      theme({ dark, background, foreground, fontSize, clear }) {
+        // Over a window backdrop the page and editor are see-through, like the terminal.
+        if (clear) background = '#00000000';
+        document.body.style.setProperty('--govi-background', clear ? 'transparent' : background);
+        monaco.editor.defineTheme('govi', {
+          base: dark ? 'vs-dark' : 'vs', inherit: true, rules: [],
+          colors: {
+            'editor.background': background, 'editor.foreground': foreground, 'minimap.background': background,
+            'editorGutter.background': background, 'editorStickyScroll.background': clear ? '#00000066' : background,
+            'editor.lineHighlightBackground': dark ? '#ffffff10' : '#0000000a', 'editor.lineHighlightBorder': '#00000000',
+            'editorLineNumber.foreground': foreground + '55', 'editorLineNumber.activeForeground': foreground,
+            'scrollbarSlider.background': dark ? '#ffffff22' : '#00000022', 'scrollbarSlider.hoverBackground': dark ? '#ffffff38' : '#00000038',
+            'scrollbarSlider.activeBackground': dark ? '#ffffff50' : '#00000050', 'scrollbar.shadow': '#00000000',
+            'editorOverviewRuler.border': '#00000000',
+          },
+        });
+        monaco.editor.setTheme('govi');
+        if (fontSize) editor.updateOptions({ fontSize });
+      },
+    };
+
+    require.config({ paths: { vs: 'vs' } });
+    require(['vs/editor/editor.main'], () => {
+      editor = monaco.editor.create(document.getElementById('editor'), {
+        model: null, automaticLayout: true, fontFamily: "'SF Mono', Menlo, Monaco, monospace", fontSize: 13,
+        minimap: { enabled: false }, scrollBeyondLastLine: false, renderWhitespace: 'selection',
+        smoothScrolling: true, fixedOverflowWidgets: true, padding: { top: 8, bottom: 8 },
+        renderLineHighlight: 'line', overviewRulerLanes: 0, overviewRulerBorder: false, hideCursorInOverviewRuler: true,
+        scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
+      });
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => post({ type: 'save' }));
+      editor.onDidChangeCursorPosition(event => post({ type: 'cursor', line: event.position.lineNumber, column: event.position.column }));
+      editor.onDidFocusEditorText(() => post({ type: 'focus' }));
+      post({ type: 'ready' });
+    }, error => post({ type: 'error', message: String(error && error.message || error) }));
+  })();
+</script>
+</body>
+</html>

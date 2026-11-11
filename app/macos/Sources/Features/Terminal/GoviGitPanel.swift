@@ -326,60 +326,6 @@ struct GoviDiffStat: View {
     }
 }
 
-/// Colored, per-type file icons, in the spirit of an editor's file tree.
-enum GoviFileIcon {
-    static func icon(for name: String) -> (symbol: String, color: Color) {
-        let lower = name.lowercased()
-        let ext = (lower as NSString).pathExtension
-        let blue = Color(red: 0.36, green: 0.62, blue: 0.98)
-        let yellow = Color(red: 0.95, green: 0.78, blue: 0.30)
-        let orange = Color(red: 0.98, green: 0.52, blue: 0.24)
-        let green = Color(red: 0.42, green: 0.80, blue: 0.48)
-        let purple = Color(red: 0.70, green: 0.52, blue: 0.95)
-        let pink = Color(red: 0.95, green: 0.45, blue: 0.65)
-        let teal = Color(red: 0.35, green: 0.78, blue: 0.80)
-        let gray = Color(white: 0.62)
-        let red = Color(red: 0.93, green: 0.38, blue: 0.36)
-        switch lower {
-        case "makefile", "dockerfile", "justfile": return ("hammer.fill", blue)
-        case "license", "license.md", "license.txt": return ("checkmark.seal.fill", yellow)
-        case ".gitignore", ".gitattributes", ".gitmodules": return ("arrow.triangle.branch", orange)
-        case ".envrc", ".env": return ("key.fill", yellow)
-        case "package.json", "package-lock.json": return ("shippingbox.fill", red)
-        default: break
-        }
-        switch ext {
-        case "swift": return ("swift", orange)
-        case "zig", "zon": return ("bolt.fill", orange)
-        case "c", "h", "m", "mm", "cpp", "hpp", "cc": return ("c.square.fill", blue)
-        case "rs": return ("gearshape.2.fill", orange)
-        case "go": return ("chevron.left.forwardslash.chevron.right", teal)
-        case "js", "mjs", "cjs", "jsx": return ("curlybraces", yellow)
-        case "ts", "tsx": return ("curlybraces", blue)
-        case "json", "jsonc": return ("curlybraces.square.fill", yellow)
-        case "py": return ("chevron.left.forwardslash.chevron.right", blue)
-        case "rb": return ("diamond.fill", red)
-        case "sh", "zsh", "bash", "fish": return ("dollarsign.square.fill", green)
-        case "md", "markdown", "mdx": return ("arrow.down.doc.fill", blue)
-        case "txt", "log": return ("doc.plaintext", gray)
-        case "html", "htm", "xml", "plist": return ("chevron.left.forwardslash.chevron.right", orange)
-        case "css", "scss", "sass": return ("paintbrush.fill", blue)
-        case "png", "jpg", "jpeg", "gif", "webp", "heic", "icns", "ico", "tiff", "bmp": return ("photo.fill", purple)
-        case "svg": return ("pencil.and.outline", yellow)
-        case "ttf", "otf", "woff", "woff2": return ("textformat", pink)
-        case "yml", "yaml", "toml", "conf", "ini", "cfg": return ("gearshape.fill", gray)
-        case "lock", "sum": return ("lock.fill", gray)
-        case "xib", "storyboard", "nib": return ("rectangle.on.rectangle", blue)
-        case "pbxproj", "xcconfig", "entitlements", "xcscheme": return ("hammer.fill", blue)
-        case "nix": return ("snowflake", teal)
-        case "pdf": return ("doc.richtext.fill", red)
-        case "zip", "gz", "tar", "xz", "dmg": return ("archivebox.fill", gray)
-        case "profraw", "a", "o", "dylib": return ("cpu", gray)
-        default: return ("doc.fill", gray)
-        }
-    }
-}
-
 /// One line of a parsed diff, with its old and new line numbers.
 struct GoviDiffLine: Hashable {
     enum Kind { case context, added, removed, hunk, note }
@@ -691,9 +637,8 @@ struct GoviGitPanel: View {
         let width = max(3, String(shown.compactMap { max($0.old ?? 0, $0.new ?? 0) }.max() ?? 0).count)
         return VStack(alignment: .leading, spacing: 0) {
             if let file = selectedFile {
-                let icon = GoviFileIcon.icon(for: file.name)
                 HStack(spacing: 8) {
-                    Image(systemName: icon.symbol).font(.system(size: 11.5)).foregroundStyle(icon.color)
+                    GoviFileIcon(name: file.name)
                     Text(file.path).font(GoviInk.font(11.5).weight(.medium)).lineLimit(1).truncationMode(.head)
                     if let old = file.oldPath { Text("from \(old)").font(GoviInk.font(10.5)).foregroundStyle(ui.muted).lineLimit(1) }
                     Spacer(minLength: 6)
@@ -922,12 +867,11 @@ private struct GoviGitFileRow: View {
     let toggle: () -> Void
     @State private var hovering = false
     var body: some View {
-        let icon = GoviFileIcon.icon(for: file.name)
         let kindColor = GoviGitColors.kind(file.kind, accent: Color(red: 0.90, green: 0.72, blue: 0.35))
         HStack(spacing: 6) {
             GoviCheck(state: included ? .all : .none, action: toggle)
             Color.clear.frame(width: CGFloat(depth) * GoviTreeMetrics.indent + 10, height: 1)
-            Image(systemName: icon.symbol).font(.system(size: 11)).foregroundStyle(icon.color).frame(width: 14)
+            GoviFileIcon(name: file.name)
             Text(file.name).font(GoviInk.font(12.5)).lineLimit(1).truncationMode(.middle)
                 .strikethrough(file.kind == "D", color: ui.muted)
                 .foregroundStyle(file.kind == "D" ? ui.muted : kindColor.opacity(0.95))

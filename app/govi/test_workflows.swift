@@ -45,7 +45,7 @@ import Foundation
         precondition(mixed.paneIDs == [first.id, web.id, blank.id])
         let mixedCheckpoint = GoviRecoveryCheckpoint(
             workspaces: [.init(id: UUID(), name: "Mixed", layout: mixed, focusedPane: web.id, group: 0, frame: [0, 0, 900, 600])])
-        precondition(mixedCheckpoint.version == 2 && mixedCheckpoint.isValid)
+        precondition(mixedCheckpoint.version == GoviRecoveryCheckpoint.currentVersion && mixedCheckpoint.isValid)
         let mixedDecoded = try JSONDecoder().decode(GoviRecoveryCheckpoint.self, from: JSONEncoder().encode(mixedCheckpoint))
         precondition(mixedDecoded == mixedCheckpoint)
         // A browser-only workspace is still a workspace.
@@ -158,8 +158,83 @@ import Foundation
             for key in Array(GoviKeyChord.characters.keys) + ["a", "0", "9"] { all += "keybind = ctrl+alt+\(key)=ignore\n" }
             try all.write(toFile: CommandLine.arguments[1], atomically: true, encoding: .utf8)
         }
+        // Editor panes (checkpoint version 3).
+        let editor = GoviEditorPaneRecord(id: UUID(), root: "/tmp/project", file: "/tmp/project/src/app.ts", line: 42)
+        let withEditor = GoviWorkspaceLayout.split(vertical: false, ratio: 0.5, first: .terminal(first), second: .editor(editor))
+        precondition(withEditor.isValid && withEditor.editorPanes == [editor] && withEditor.paneIDs == [first.id, editor.id])
+        precondition(withEditor.panes.map(\.id) == [first.id] && withEditor.webPanes.isEmpty)
+        let editorCheckpoint = GoviRecoveryCheckpoint(
+            workspaces: [.init(id: UUID(), name: "Code", layout: withEditor, focusedPane: editor.id, group: 0, frame: [0, 0, 900, 600])])
+        let editorDecoded = try JSONDecoder().decode(GoviRecoveryCheckpoint.self, from: JSONEncoder().encode(editorCheckpoint))
+        precondition(editorDecoded == editorCheckpoint)
+        precondition(GoviWorkspaceLayout.editor(.init(id: UUID(), root: "/tmp", file: "", line: 1)).isValid)
+        for bad in [
+            GoviEditorPaneRecord(id: UUID(), root: "relative", file: "", line: 1),
+            GoviEditorPaneRecord(id: UUID(), root: "/tmp", file: "relative.ts", line: 1),
+            GoviEditorPaneRecord(id: UUID(), root: "/tmp", file: "/tmp/a\0b", line: 1),
+            GoviEditorPaneRecord(id: UUID(), root: "/tmp", file: "", line: 0),
+        ] { precondition(!GoviWorkspaceLayout.editor(bad).isValid) }
+        let editorInstance = withEditor.freshInstance()
+        precondition(editorInstance.isValid && Set(editorInstance.paneIDs).isDisjoint(with: Set(withEditor.paneIDs)))
+        precondition(editorInstance.editorPanes.map(\.file) == [editor.file])
+        var future = editorCheckpoint
+        future.version = GoviRecoveryCheckpoint.currentVersion + 1
+        precondition(!future.isValid)
+
+        // Clicked file paths with line and column.
+        precondition(GoviLinkRouter.fileLocation("./src/app.ts:42:7", relativeTo: "/tmp/project") == .init(path: "/tmp/project/src/app.ts", line: 42, column: 7))
+        precondition(GoviLinkRouter.fileLocation("../lib/a.swift:12:", relativeTo: "/tmp/project") == .init(path: "/tmp/lib/a.swift", line: 12, column: nil))
+        precondition(GoviLinkRouter.fileLocation("/etc/hosts", relativeTo: nil) == .init(path: "/etc/hosts", line: nil, column: nil))
+        precondition(GoviLinkRouter.fileLocation("file:///tmp/a%20b.txt", relativeTo: nil)?.path == "/tmp/a b.txt")
+        precondition(GoviLinkRouter.fileLocation("file://otherhost/tmp/a.txt", relativeTo: nil) == nil)
+        precondition(GoviLinkRouter.fileLocation("./a.ts", relativeTo: nil) == nil)
+        precondition(GoviLinkRouter.fileLocation("./a.ts:0", relativeTo: "/tmp")?.line == nil)
+        // Quick Look targets: web addresses, and paths that exist.
+        precondition(GoviLinkRouter.previewTarget("(https://example.com/a).", relativeTo: nil)?.absoluteString == "https://example.com/a")
+        precondition(GoviLinkRouter.previewTarget("https://", relativeTo: nil) == nil)
+        precondition(GoviLinkRouter.previewTarget("'/etc/hosts',", relativeTo: nil)?.path == "/etc/hosts")
+        precondition(GoviLinkRouter.previewTarget("/etc/hosts:3", relativeTo: nil)?.path == "/etc/hosts")
+        precondition(GoviLinkRouter.previewTarget("hosts", relativeTo: "/etc") == nil)
+        precondition(GoviLinkRouter.previewTarget("./hosts", relativeTo: "/etc")?.path == "/etc/hosts")
+        precondition(GoviLinkRouter.previewTarget("/no/such/file.png", relativeTo: nil) == nil)
+        precondition(GoviLinkRouter.previewTarget(".", relativeTo: "/etc") == nil && GoviLinkRouter.previewTarget("/", relativeTo: nil) == nil)
+        let printed = "see /etc/hosts and https://example.com\nagain /etc/hosts then 1.5 ./missing.txt"
+        precondition(GoviLinkRouter.previewTargets(in: printed, relativeTo: "/tmp").map(\.absoluteString) == ["https://example.com", "file:///etc/hosts"])
+        precondition(GoviLinkRouter.token(in: "open /tmp/a.gif now", atColumn: 9, containing: "a.gif") == "/tmp/a.gif")
+        precondition(GoviLinkRouter.token(in: "日本 /tmp/a.gif", atColumn: 12, containing: "a.gif") == "/tmp/a.gif")
+        precondition(GoviLinkRouter.token(in: "open /tmp/a.gif now", atColumn: 4, containing: "zzz") == nil)
+        // Text files only.
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("govi-text-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let textFile = scratch.appendingPathComponent("a.ts"), binaryFile = scratch.appendingPathComponent("b.bin")
+        try Data("let x = 1\n".utf8).write(to: textFile)
+        try Data([0x89, 0x50, 0x00, 0x01]).write(to: binaryFile)
+        precondition(GoviTextFile.isEditable(textFile.path) && !GoviTextFile.isEditable(binaryFile.path) && !GoviTextFile.isEditable(scratch.path))
+        precondition((try? GoviTextFile.read(textFile).get()) == "let x = 1\n")
+        if case .success = GoviTextFile.read(binaryFile) { preconditionFailure("binary file read as text") }
+
+        // Local dev-server links found in terminal output.
+        let devLog = """
+            VITE v5.0.0  ready in 300 ms
+              ➜  Local:   http://localhost:5173/
+              ➜  Network: http://192.168.1.4:5173/
+            then http://0.0.0.0:8000/docs. Also (http://127.0.0.1:3000/api).
+            """
+        precondition(GoviLinkRouter.latestLocalURL(in: devLog)?.absoluteString == "http://127.0.0.1:3000/api")
+        precondition(GoviLinkRouter.latestLocalURL(in: "Uvicorn running on http://0.0.0.0:8000/docs.")?.absoluteString == "http://localhost:8000/docs")
+        precondition(GoviLinkRouter.latestLocalURL(in: "  ➜  Local:   http://localhost:5173/")?.absoluteString == "http://localhost:5173/")
+        precondition(GoviLinkRouter.latestLocalURL(in: "see https://example.com and http://192.168.1.4:3000") == nil)
+        precondition(GoviLinkRouter.latestLocalURL(in: "at http://app.localhost:8080/x,")?.absoluteString == "http://app.localhost:8080/x")
+        precondition(GoviLinkRouter.latestLocalURL(in: "ipv6 http://[::1]:4000/") != nil)
+        precondition(GoviLinkRouter.isLocalWeb(URL(string: "http://LOCALHOST:3000")!))
+        precondition(!GoviLinkRouter.isLocalWeb(URL(string: "http://localhost.example.com")!))
+        precondition(!GoviLinkRouter.isLocalWeb(URL(string: "file:///tmp/a.html")!))
+        precondition(!GoviLinkRouter.isLocalWeb(URL(string: "https://example.com")!))
+        precondition(GoviLinkRouter.origin(URL(string: "http://localhost:3000/a")!) == GoviLinkRouter.origin(URL(string: "http://LocalHost:3000/b?c")!))
+        precondition(GoviLinkRouter.origin(URL(string: "http://localhost:3000")!) != GoviLinkRouter.origin(URL(string: "http://localhost:3001")!))
         print(
-            "Passed workspace/template round trips, ID isolation, bounds, quoting, helper timeouts, status transitions, duplicate hooks, event validation and shortcut conflicts."
+            "Passed workspace/template round trips, ID isolation, bounds, quoting, helper timeouts, status transitions, duplicate hooks, event validation, shortcut conflicts, editor records and link detection."
         )
     }
 }

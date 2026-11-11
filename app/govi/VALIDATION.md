@@ -1,5 +1,23 @@
 # Govi build record
 
+## November 9, 2026 — browser follow-ups and editor pane
+
+Added:
+- Browser: Command-clicking a local dev-server link (localhost, 127.0.0.1, 0.0.0.0, [::1], *.localhost) opens it in a browser pane beside the terminal, reusing a pane already on that origin. Terminal title bars offer the latest local address on screen as a chip (Settings › Browser can turn this off).
+- Browser: an element picker (cursor button in the browser bar). It runs in an isolated JavaScript world; the clicked element's URL, selector, size, text and HTML are pasted into the most recently used terminal and copied to the clipboard. Escape cancels; the page never receives the click.
+- Browser: opt-in "Keep cookies and site data between launches" (Govi's own WebKit store) and a Clear Saved Site Data button. Off by default.
+- Editor pane (kind "editor", Cmd+Shift+E, + menu, palette, sidebar): file tree beside Monaco 0.52.2. build.sh fetches Monaco from the npm registry once, checks the published sha512, and bundles only min/vs (13 MB) plus its license. Saves are atomic, write through symlinks, keep permissions and ask before replacing a file changed on disk. Unsaved changes are asked about before closing the pane, tab or window, before quitting, and before switching files.
+- Command-clicking a text file path (./src/app.ts:42:7, ../x, /abs, file:) opens it in an editor at that line (Settings › Editor can turn this off). Binary, oversized and non-UTF-8 files still open with macOS.
+- Recovery checkpoint version 3 adds editor records; versions 1 and 2 still load.
+
+Verified:
+- ./govi/build.sh; test-layout (694), test-workflows (new: local link detection, file:line parsing, text/binary detection, editor record validation, round trip, fresh IDs, version bounds), test-remote, test-integrations, test-cli, and the four Python suites all pass.
+- Picker script in a browser against a test page: correct selector, overlay cleanup, page click suppressed, Escape cancels.
+- Bundled editor page in a browser with a stubbed message handler: TypeScript/Python detection, theme colors, cursor reveal, dirty tracking, a save racing further typing stays dirty, read-only, model disposal.
+- Review copy restored a seeded v3 checkpoint with a terminal, editor and browser; `govi panes` listed the editor with its file. (`govi panes` now reports kind "editor".)
+
+Not verified live (no UI automation in this session): the localhost chip appearing, the picker inside WKWebView, Cmd+S reaching Monaco inside WKWebView, the unsaved-changes sheets, and Command-clicking paths in a real terminal.
+
 ## November 9, 2026 — pane base class and browser pane
 
 Split leaves are now `GoviPaneView`, the base class of both `Ghostty.SurfaceView`

@@ -78,6 +78,7 @@ import GhosttyKit
                 if let web = leaf as? GoviWebPaneView {
                     return .web(.init(id: web.id, url: web.url.map(\.absoluteString) ?? "", title: web.pageTitle))
                 }
+                if let editor = leaf as? GoviEditorPaneView { return .editor(editor.record) }
                 guard let pane = leaf as? Ghostty.SurfaceView else {
                     preconditionFailure("Unknown pane kind \(leaf.paneKind) in workspace capture")
                 }
@@ -171,6 +172,8 @@ import GhosttyKit
             case .web(let record):
                 let url = URL(string: record.url).flatMap { GoviWebPaneRecord.isAllowed($0) ? $0 : nil }
                 return .leaf(view: GoviWebPaneView(id: record.id, url: url, title: record.title))
+            case .editor(let record):
+                return .leaf(view: GoviEditorPaneView(record: record))
             case .split(let vertical, let ratio, let first, let second):
                 return .split(.init(direction: vertical ? .vertical : .horizontal, ratio: ratio, left: build(first), right: build(second)))
             }

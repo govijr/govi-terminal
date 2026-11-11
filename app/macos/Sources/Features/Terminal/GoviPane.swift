@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 
 enum GoviPaneNaming {
@@ -38,14 +39,14 @@ extension EnvironmentValues {
     }
 }
 
-private enum GoviPaneMetrics { static let headerHeight: CGFloat = 30 }
+enum GoviPaneMetrics { static let headerHeight: CGFloat = 30 }
 
-private struct GoviPaneDropTarget: Equatable {
+struct GoviPaneDropTarget: Equatable {
     let id: UUID
     let zone: GoviSnapZone
 }
 
-private final class GoviPaneDragPreview: ObservableObject {
+final class GoviPaneDragPreview: ObservableObject {
     static let shared = GoviPaneDragPreview()
     @Published var target: GoviPaneDropTarget?
 }
@@ -237,6 +238,7 @@ struct GoviPaneFrame<Header: View, Content: View>: View {
                 }
             }
             .onDrop(of: [GoviPaneCoordinator.typeID], delegate: GoviPaneDropDelegate(surface: pane, size: geometry.size))
+            .background(GoviPaneFrameProbe(id: pane.id))
         }
         .accessibilityElement(children: .contain).accessibilityLabel("\(label): \(GoviPaneNaming.title(pane))")
     }
@@ -293,12 +295,19 @@ struct GoviPaneDragHandle: NSViewRepresentable {
     func updateNSView(_ view: Handle, context: Context) {
         view.surface = surface
         view.isSplit = isSplit
-        view.toolTip = "Drag to dock this pane beside another. Drop in the center to swap."
+        view.floatingDrag = context.environment.goviFloatingDrag
+        view.toolTip =
+            view.floatingDrag == nil
+            ? "Drag to dock this pane beside another. Drop in the center to swap."
+            : "Drag to move. Double-click, or press the detach button again, to dock it beside the nearest pane."
     }
 
     final class Handle: NSView, NSDraggingSource {
         weak var surface: GoviPaneView?
         var isSplit = false
+        /// Set when this title bar belongs to a floating panel: dragging moves the panel.
+        var floatingDrag: GoviFloatingDrag?
+        private var floatingStart: CGPoint?
         private var mouseDownPoint: CGPoint?
         private var dragging = false
         override var isFlipped: Bool { true }
@@ -307,6 +316,16 @@ struct GoviPaneDragHandle: NSViewRepresentable {
         override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
         override func mouseDown(with event: NSEvent) {
             if let surface { surface.window?.makeFirstResponder(surface.paneFocusTarget) }
+            if let floatingDrag {
+                if event.clickCount == 2 {
+                    floatingStart = nil
+                    floatingDrag.doubleClicked()
+                } else {
+                    floatingStart = event.locationInWindow
+                    floatingDrag.began()
+                }
+                return
+            }
             if event.clickCount == 2, isSplit, let surface {
                 (surface.window?.windowController as? BaseTerminalController)?.performPaneCommand(.zoom, on: surface)
                 mouseDownPoint = nil
@@ -314,8 +333,23 @@ struct GoviPaneDragHandle: NSViewRepresentable {
                 mouseDownPoint = convert(event.locationInWindow, from: nil)
             }
         }
-        override func mouseUp(with event: NSEvent) { mouseDownPoint = nil }
+        override func mouseUp(with event: NSEvent) {
+            mouseDownPoint = nil
+            if let floatingDrag, floatingStart != nil {
+                floatingStart = nil
+                NSCursor.arrow.set()
+                floatingDrag.ended()
+            }
+        }
         override func mouseDragged(with event: NSEvent) {
+            if let floatingDrag {
+                guard let start = floatingStart else { return }
+                let point = event.locationInWindow
+                NSCursor.closedHand.set()
+                // Window coordinates grow upward; panel offsets grow downward.
+                floatingDrag.moved(CGSize(width: point.x - start.x, height: start.y - point.y))
+                return
+            }
             guard !dragging, let start = mouseDownPoint, let surface else { return }
             let point = convert(event.locationInWindow, from: nil)
             guard hypot(point.x - start.x, point.y - start.y) >= 4 else { return }
@@ -369,12 +403,17 @@ struct GoviPaneDragHandle: NSViewRepresentable {
 /// Title and split controls at the top of every terminal pane.
 struct GoviPaneBar: View {
     @Environment(\.goviPalette) private var ui
+    @Environment(\.goviFloatingDrag) private var floatingDrag
     @ObservedObject var surface: Ghostty.SurfaceView
     @ObservedObject private var shortcuts = GoviShortcuts.shared
     var isSplit: Bool
     var showButtons: Bool
     // Re-render when the backdrop or terminal opacity changes in Settings.
     @AppStorage(GoviBackdropStore.styleKey) private var backdropStyle = "none"
+    /// The latest local dev-server address on screen, offered as a chip.
+    @State private var localURL: URL?
+    @AppStorage(GoviBrowserPreferences.detectKey) private var detectLocal = true
+    private let scan = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
         let title = GoviPaneNaming.title(surface)
@@ -391,11 +430,27 @@ struct GoviPaneBar: View {
             }.frame(maxWidth: .infinity, alignment: .leading).frame(height: GoviPaneMetrics.headerHeight)
                 .overlay { GoviPaneDragHandle(surface: surface, isSplit: isSplit) }
                 .help("Drag to dock beside another pane; drop in its center to swap")
+            if let localURL {
+                let label = (localURL.host ?? "localhost") + (localURL.port.map { ":\($0)" } ?? "")
+                Button {
+                    (surface.window?.windowController as? BaseTerminalController)?.showWebPane(localURL, beside: surface)
+                } label: {
+                    Label(label, systemImage: "globe").labelStyle(.titleAndIcon).font(GoviInk.font(11)).lineLimit(1)
+                        .padding(.horizontal, 7).frame(height: 20)
+                        .background(ui.accent.opacity(0.14), in: Capsule())
+                        .foregroundStyle(ui.ink)
+                }.buttonStyle(.plain).fixedSize()
+                    .help("Open \(localURL.absoluteString) in a browser pane")
+                    .accessibilityLabel("Open \(label) in a browser pane")
+            }
             HStack(spacing: 2) {
-                button("rectangle.split.2x1", "Split right (\(shortcuts.chord(.splitRight).display))") { perform("new_split:right") }
-                button("rectangle.split.1x2", "Split below (\(shortcuts.chord(.splitDown).display))") { perform("new_split:down") }
-                button("plus.square.on.square", "New workspace here (\(shortcuts.chord(.newWorkspace).display))") { perform("new_tab") }
-                if isSplit {
+                if floatingDrag == nil {
+                    button("rectangle.split.2x1", "Split right (\(shortcuts.chord(.splitRight).display))") { perform("new_split:right") }
+                    button("rectangle.split.1x2", "Split below (\(shortcuts.chord(.splitDown).display))") { perform("new_split:down") }
+                    button("plus.square.on.square", "New workspace here (\(shortcuts.chord(.newWorkspace).display))") { perform("new_tab") }
+                }
+                GoviFloatingButtons(pane: surface, isSplit: isSplit)
+                if isSplit && floatingDrag == nil {
                     button("arrow.up.left.and.arrow.down.right", "Maximize / restore terminal (\(shortcuts.chord(.zoom).display))") {
                         perform("toggle_split_zoom")
                     }
@@ -409,6 +464,15 @@ struct GoviPaneBar: View {
         .background(GoviInk.color(GoviTheme.current.background).opacity(GoviBackdropStore.terminalOpacity), ignoresSafeAreaEdges: [])
         .contentShape(Rectangle())
         .animation(.easeOut(duration: 0.12), value: showButtons)
+        .onReceive(scan) { _ in
+            // Only windows on screen; the surface caches its visible text for 500 ms.
+            guard detectLocal, surface.window?.occlusionState.contains(.visible) == true, !surface.processExited else {
+                if localURL != nil { localURL = nil }
+                return
+            }
+            let found = GoviLinkRouter.latestLocalURL(in: surface.cachedVisibleContents.get())
+            if found != localURL { localURL = found }
+        }
     }
 
     private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
@@ -431,12 +495,28 @@ struct GoviWebPane: View {
     @Environment(\.goviPalette) private var ui
     @ObservedObject var pane: GoviWebPaneView
     var isSplit: Bool
+    @AppStorage(GoviBackdropStore.styleKey) private var backdropStyle = "none"
 
     var body: some View {
+        // Over a backdrop a page can't be see-through like the terminal, so it sits in the
+        // window as a rounded sheet, and an empty pane shows the backdrop rather than a blank box.
+        let floating = GoviBackdropStore.terminalOpacity < 1
         GoviPaneFrame(pane: pane, isSplit: isSplit, label: "Browser pane") { showButtons in
             GoviWebPaneBar(pane: pane, isSplit: isSplit, showButtons: showButtons)
         } content: {
             GoviPaneHost(view: pane)
+                .opacity(pane.url == nil ? 0 : 1)
+                .padding([.horizontal, .bottom], floating ? 6 : 0)
+                .overlay {
+                    if pane.url == nil {
+                        VStack(spacing: 10) {
+                            GoviGlyph(kind: .globe).scaleEffect(2.2).frame(width: 40, height: 40).foregroundStyle(ui.color(for: .globe))
+                            Text("Type an address above, such as localhost:3000").font(GoviInk.font(12)).foregroundStyle(ui.muted)
+                        }.allowsHitTesting(false)
+                    }
+                }
+                .onAppear { pane.setRounded(floating) }
+                .onChange(of: backdropStyle) { _ in pane.setRounded(GoviBackdropStore.terminalOpacity < 1) }
                 .overlay(alignment: .bottom) {
                     if let problem = pane.problem {
                         Text(problem).font(GoviInk.font(11.5)).foregroundStyle(ui.ink).lineLimit(2)
@@ -452,7 +532,7 @@ struct GoviWebPane: View {
 
 /// Puts an existing pane view (and its live state) into SwiftUI without
 /// recreating it when the split layout changes.
-private struct GoviPaneHost: NSViewRepresentable {
+struct GoviPaneHost: NSViewRepresentable {
     let view: NSView
     func makeNSView(context: Context) -> NSView { view }
     func updateNSView(_ nsView: NSView, context: Context) {}
@@ -461,6 +541,7 @@ private struct GoviPaneHost: NSViewRepresentable {
 /// Title, address field and pane controls for a browser pane.
 private struct GoviWebPaneBar: View {
     @Environment(\.goviPalette) private var ui
+    @Environment(\.goviFloatingDrag) private var floatingDrag
     @ObservedObject var pane: GoviWebPaneView
     @ObservedObject private var shortcuts = GoviShortcuts.shared
     var isSplit: Bool
@@ -482,6 +563,13 @@ private struct GoviWebPaneBar: View {
             button("chevron.left", "Back") { pane.goBack() }.disabled(!pane.canGoBack)
             button("chevron.right", "Forward") { pane.goForward() }.disabled(!pane.canGoForward)
             button(pane.isLoading ? "xmark" : "arrow.clockwise", pane.isLoading ? "Stop loading" : "Reload") { pane.reload() }
+            Button { pane.togglePicker() } label: {
+                Image(systemName: "cursorarrow.rays").font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(pane.isPicking ? ui.accent : ui.ink)
+                    .frame(width: 24, height: 24).modifier(GoviHoverHighlight())
+            }.buttonStyle(.plain).disabled(pane.url == nil)
+                .help(pane.isPicking ? "Cancel picking (Esc)" : "Pick an element and send it to the last terminal you used")
+                .accessibilityLabel(pane.isPicking ? "Cancel element picker" : "Pick an element")
             TextField("Address, such as localhost:3000", text: $address)
                 .textFieldStyle(.plain).font(GoviInk.font(11.5)).foregroundStyle(ui.ink)
                 .padding(.horizontal, 8).frame(height: 22)
@@ -490,9 +578,12 @@ private struct GoviWebPaneBar: View {
                 .onSubmit { if pane.load(address) { pane.window?.makeFirstResponder(pane.paneFocusTarget) } }
                 .accessibilityLabel("Address")
             HStack(spacing: 2) {
-                button("rectangle.split.2x1", "Split right (\(shortcuts.chord(.splitRight).display))") { command(.splitRight) }
-                button("rectangle.split.1x2", "Split below (\(shortcuts.chord(.splitDown).display))") { command(.splitDown) }
-                if isSplit {
+                if floatingDrag == nil {
+                    button("rectangle.split.2x1", "Split right (\(shortcuts.chord(.splitRight).display))") { command(.splitRight) }
+                    button("rectangle.split.1x2", "Split below (\(shortcuts.chord(.splitDown).display))") { command(.splitDown) }
+                }
+                GoviFloatingButtons(pane: pane, isSplit: isSplit)
+                if isSplit && floatingDrag == nil {
                     button("arrow.up.left.and.arrow.down.right", "Maximize / restore pane (\(shortcuts.chord(.zoom).display))") {
                         command(.zoom)
                     }

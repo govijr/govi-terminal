@@ -45,8 +45,9 @@ struct TerminalCommandPaletteView: View {
             }
             let navigation = TerminalController.all.flatMap { controller in
                 controller.surfaceTree.map { pane in
-                    let kind = pane is Ghostty.SurfaceView ? "Terminal" : "Browser"
-                    let detail = (pane as? GoviWebPaneView)?.url?.absoluteString ?? pane.paneDirectory ?? ""
+                    let kind = pane is Ghostty.SurfaceView ? "Terminal" : pane is GoviEditorPaneView ? "Editor" : "Browser"
+                    let detail =
+                        (pane as? GoviWebPaneView)?.url?.absoluteString ?? (pane as? GoviEditorPaneView)?.file?.path ?? pane.paneDirectory ?? ""
                     return CommandOption(title: "\(kind): \(GoviPaneNaming.title(pane))", description: detail, symbols: nil) {
                         controller.window?.tabGroup?.selectedWindow = controller.window
                         controller.window?.makeKeyAndOrderFront(nil)
@@ -64,6 +65,9 @@ struct TerminalCommandPaletteView: View {
             }
             let browser = CommandOption(title: "Open Browser Pane", description: "Open a web page, such as your dev server, in a split beside this pane.", symbols: shortcuts.chord(.browser).symbols) {
                 GoviPaneCoordinator.owner(of: surfaceView.id)?.openWebPane()
+            }
+            let editor = CommandOption(title: "Open Editor Pane", description: "Browse and edit this folder's files in a split beside this pane.", symbols: shortcuts.chord(.editor).symbols) {
+                GoviPaneCoordinator.owner(of: surfaceView.id)?.openEditorPane()
             }
             let focus = CommandOption(title: "Toggle Focus Mode", description: "Hide or restore the sidebar and dock.", symbols: nil) {
                 NotificationCenter.default.post(name: .goviToggleFocus, object: nil)
@@ -91,7 +95,7 @@ struct TerminalCommandPaletteView: View {
             let tasks = CommandOption(title: "Tasks — GitHub and Linear", description: "Start from an issue, review pull requests, and share results.", symbols: nil) {
                 NotificationCenter.default.post(name: .goviTasks, object: nil)
             }
-            return [find, tasks, attention, nextAttention, browser, focus, sidebar, settings, templates, saveTemplate] + tools + navigation + projects + saved + builtins
+            return [find, tasks, attention, nextAttention, browser, editor, focus, sidebar, settings, templates, saveTemplate] + tools + navigation + projects + saved + builtins
         } catch {
             return []
         }

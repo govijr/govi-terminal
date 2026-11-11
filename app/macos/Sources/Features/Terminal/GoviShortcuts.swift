@@ -33,6 +33,19 @@ import SwiftUI
 
     /// App-local shortcuts only: no global keyboard monitor or extra permission.
     func handle(_ event: NSEvent) -> Bool {
+        // An open Quick Look preview takes Escape, Command-W and the arrow keys first.
+        if GoviQuickLook.shared.handleKey(event) { return true }
+        // Hidden demo/debug shortcut, also available in local release builds.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad]) == [.command, .control, .shift],
+            event.charactersIgnoringModifiers?.lowercased() == "g",
+            let window = NSApp.keyWindow, window.attachedSheet == nil,
+            window.windowController is TerminalController
+        {
+            if !event.isARepeat {
+                NotificationCenter.default.post(name: .goviReplayLaunchSplash, object: window)
+            }
+            return true
+        }
         guard let chord = Self.chord(from: event),
             let action = GoviShortcutAction.allCases.first(where: { self.chord($0) == chord }),
             let window = NSApp.keyWindow, window.attachedSheet == nil,
@@ -58,6 +71,8 @@ import SwiftUI
         case .templates: NotificationCenter.default.post(name: .goviTemplates, object: nil)
         case .remoteHosts: NotificationCenter.default.post(name: .goviRemoteHosts, object: nil)
         case .browser: controller.openWebPane()
+        case .editor: controller.openEditorPane()
+        case .quickLook: GoviQuickLook.shared.toggle(in: controller)
         default: return false
         }
         return true

@@ -91,6 +91,7 @@ final class GoviRepository: ObservableObject {
 struct GoviRepositoryDock: View {
     @ObservedObject private var usage = GoviUsageStore.shared
     @Environment(\.goviPalette) private var ui
+    @Environment(\.goviFloatingPanes) private var floatingPanes
 
     let directory: String
     let openFolder: (String) -> Void
@@ -104,6 +105,7 @@ struct GoviRepositoryDock: View {
     private let refresh = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     var body: some View {
         HStack(spacing: 9) {
+            if let floatingPanes { GoviMinimizedPaneChips(floating: floatingPanes) }
             if changes.root != nil {
                 Button(action: showChanges) {
                     HStack(spacing: 6) {

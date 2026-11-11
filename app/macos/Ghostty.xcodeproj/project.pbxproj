@@ -30,6 +30,10 @@
 		D0A100000000000000000201 /* GoviSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A100000000000000000101 /* GoviSuggestions.swift */; };
 		D0A100000000000000000203 /* GoviInlineSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A100000000000000000103 /* GoviInlineSettingsView.swift */; };
 		602222222222222222222203 /* GoviPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603333333333333333333303; };
+		7B2F1D0E00000000000000B1 /* GoviEditorPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F1D0E00000000000000B2; };
+		7B2F1D0E00000000000000A1 /* GoviLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F1D0E00000000000000A2; };
+		7B2F1D0E00000000000000C1 /* GoviFloatingPanes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F1D0E00000000000000C2; };
+		7B2F1D0E00000000000000D1 /* GoviQuickLook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F1D0E00000000000000D2; };
 		6A1E0C0DE0000000000000B1 /* GoviWebPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1E0C0DE0000000000000B2; };
 		6A1E0C0DE0000000000000A1 /* GoviPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1E0C0DE0000000000000A2; };
 		6A1E0C0DE0000000000000C1 /* GoviControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1E0C0DE0000000000000C2; };
@@ -160,6 +164,10 @@
 		D0A100000000000000000101 /* GoviSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviSuggestions.swift; sourceTree = "<group>"; };
 		D0A100000000000000000103 /* GoviInlineSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviInlineSettingsView.swift; sourceTree = "<group>"; };
 		603333333333333333333303 /* GoviPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviPane.swift; sourceTree = "<group>"; };
+		7B2F1D0E00000000000000B2 /* GoviEditorPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviEditorPaneView.swift; sourceTree = "<group>"; };
+		7B2F1D0E00000000000000A2 /* GoviLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviLinks.swift; sourceTree = "<group>"; };
+		7B2F1D0E00000000000000C2 /* GoviFloatingPanes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviFloatingPanes.swift; sourceTree = "<group>"; };
+		7B2F1D0E00000000000000D2 /* GoviQuickLook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviQuickLook.swift; sourceTree = "<group>"; };
 		6A1E0C0DE0000000000000B2 /* GoviWebPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviWebPaneView.swift; sourceTree = "<group>"; };
 		6A1E0C0DE0000000000000A2 /* GoviPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviPaneView.swift; sourceTree = "<group>"; };
 		6A1E0C0DE0000000000000C2 /* GoviControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoviControl.swift; sourceTree = "<group>"; };
@@ -524,6 +532,10 @@
 				609999999999999999999911 /* GoviIntegrationModels.swift */,
 				606666666666666666666602 /* GoviPersistence.swift */,
 				603333333333333333333303 /* GoviPane.swift */,
+				7B2F1D0E00000000000000B2 /* GoviEditorPaneView.swift */,
+				7B2F1D0E00000000000000A2 /* GoviLinks.swift */,
+				7B2F1D0E00000000000000C2 /* GoviFloatingPanes.swift */,
+				7B2F1D0E00000000000000D2 /* GoviQuickLook.swift */,
 				6A1E0C0DE0000000000000B2 /* GoviWebPaneView.swift */,
 				6A1E0C0DE0000000000000A2 /* GoviPaneView.swift */,
 				6A1E0C0DE0000000000000C2 /* GoviControl.swift */,
@@ -807,6 +819,10 @@
 				609999999999999999999901 /* GoviIntegrationModels.swift in Sources */,
 				606666666666666666666601 /* GoviPersistence.swift in Sources */,
 				602222222222222222222203 /* GoviPane.swift in Sources */,
+				7B2F1D0E00000000000000B1 /* GoviEditorPaneView.swift in Sources */,
+				7B2F1D0E00000000000000A1 /* GoviLinks.swift in Sources */,
+				7B2F1D0E00000000000000C1 /* GoviFloatingPanes.swift in Sources */,
+				7B2F1D0E00000000000000D1 /* GoviQuickLook.swift in Sources */,
 				6A1E0C0DE0000000000000B1 /* GoviWebPaneView.swift in Sources */,
 				6A1E0C0DE0000000000000A1 /* GoviPaneView.swift in Sources */,
 				6A1E0C0DE0000000000000C1 /* GoviControl.swift in Sources */,

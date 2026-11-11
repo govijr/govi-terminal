@@ -161,6 +161,8 @@ class AppDelegate: NSObject,
         _ = NSEvent.addLocalMonitorForEvents(
             matching: [.keyDown],
             handler: localEventHandler)
+        // Govi: Shift-Command over a link in a terminal peeks at it.
+        GoviQuickLook.shared.start()
 
         // Notifications
         NotificationCenter.default.addObserver(
@@ -294,6 +296,19 @@ class AppDelegate: NSObject,
         // target removing it soon.
         if (windows.allSatisfy { !$0.isVisible }) {
             return .terminateNow
+        }
+
+        // Govi: unsaved editor changes are handled first, even when logging
+        // out; quitting starts over once they're saved or discarded.
+        let unsaved = GoviUnsavedEdits.all()
+        if !unsaved.isEmpty {
+            GoviUnsavedEdits.resolve(unsaved, window: nil) {
+                NSApp.reply(toApplicationShouldTerminate: false)
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            } cancelled: {
+                NSApp.reply(toApplicationShouldTerminate: false)
+            }
+            return .terminateLater
         }
 
         // If the user is shutting down, restarting, or logging out, we don't confirm quit.

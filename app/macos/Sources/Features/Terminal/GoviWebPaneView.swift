@@ -1,12 +1,29 @@
 import AppKit
 import Combine
+import SwiftUI
 import WebKit
+
+/// Browser settings, stored in user defaults.
+enum GoviBrowserPreferences {
+    /// Offer local dev-server addresses a terminal prints, as a chip in its title bar.
+    static let detectKey = "GoviBrowserDetectLocalServers"
+    /// Keep cookies, storage and caches between launches. Off by default.
+    static let keepDataKey = "GoviBrowserKeepSiteData"
+
+    static var keepsSiteData: Bool { UserDefaults.standard.bool(forKey: keepDataKey) }
+
+    /// Govi's own persistent store (per app, not shared with Safari), or a
+    /// private one that's discarded with the pane.
+    @MainActor static func dataStore() -> WKWebsiteDataStore {
+        keepsSiteData ? .default() : .nonPersistent()
+    }
+}
 
 /// A browser pane that lives in the split tree next to terminals.
 ///
-/// It uses the system WebKit with a non-persistent data store, so nothing it
-/// loads survives a relaunch except the address. Web Inspector is available
-/// from the context menu.
+/// By default it uses a non-persistent data store, so nothing it loads
+/// survives a relaunch except the address; Settings › Browser can keep site
+/// data instead. Web Inspector is available from the context menu.
 final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
     static let kindName = "web"
     /// Schemes the pane navigates to itself; anything else is handed to macOS.
@@ -14,12 +31,15 @@ final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
     static let maxURLLength = GoviWebPaneRecord.maxURLLength
 
     @Published private(set) var pageTitle = ""
-    @Published private(set) var url: URL?
+    /// Nil until a page is opened; the empty web view stays hidden so the window shows through.
+    @Published private(set) var url: URL? { didSet { webView.isHidden = url == nil } }
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
     @Published private(set) var isLoading = false
     /// Set when an address was rejected or a page failed to load.
     @Published var problem: String?
+    /// True while the element picker waits for a click on the page.
+    @Published private(set) var isPicking = false
 
     let webView: WKWebView
     private var observers: [NSKeyValueObservation] = []
@@ -31,7 +51,7 @@ final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
 
     init(id: UUID = UUID(), url: URL? = nil, title: String = "") {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = GoviBrowserPreferences.dataStore()
         let console = ConsoleRelay()
         configuration.userContentController.addUserScript(
             WKUserScript(source: Self.consoleScript, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
@@ -75,6 +95,7 @@ final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
             self.url = url
             webView.load(URLRequest(url: url))
         }
+        webView.isHidden = self.url == nil
     }
 
     required init?(coder: NSCoder) {
@@ -95,6 +116,13 @@ final class GoviWebPaneView: GoviPaneView, ObservableObject, Codable {
         return url?.host ?? "Browser"
     }
     override var paneIcon: String { "globe" }
+    /// Rounds the page's corners when it floats over a window backdrop.
+    func setRounded(_ rounded: Bool) {
+        webView.wantsLayer = true
+        webView.layer?.cornerCurve = .continuous
+        webView.layer?.cornerRadius = rounded ? 10 : 0
+        webView.layer?.masksToBounds = rounded
+    }
     override var paneFocusTarget: NSView { webView }
     override func paneFocusDidChange(_ focused: Bool) {
         if focused { lastActive = Date() }
@@ -462,5 +490,174 @@ private final class ConsoleRelay: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         MainActor.assumeIsolated { pane?.recordConsole(message.body) }
+    }
+}
+
+// MARK: - Element picker
+
+/// Lets the person click an element on the page and hands a description of
+/// it to the terminal they used last, where an agent can act on it.
+@MainActor
+extension GoviWebPaneView {
+    /// The picker runs in its own JavaScript world, so page scripts can't see
+    /// or interfere with it; the DOM is shared.
+    private static let pickerWorld = WKContentWorld.world(name: "govi-picker")
+
+    func togglePicker() {
+        if isPicking {
+            webView.evaluateJavaScript("window.__goviPickCancel && window.__goviPickCancel()", in: nil, in: Self.pickerWorld)
+            return
+        }
+        isPicking = true
+        problem = nil
+        window?.makeFirstResponder(webView)
+        webView.callAsyncJavaScript(Self.pickerScript, arguments: [:], in: nil, in: Self.pickerWorld) { [weak self] result in
+            guard let self else { return }
+            self.isPicking = false
+            switch result {
+            case .success(let value):
+                guard let text = value as? String, let data = text.data(using: .utf8),
+                    let pick = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { return }  // Cancelled.
+                self.deliver(pick)
+            case .failure(let error):
+                self.problem = "The element picker couldn't run on this page: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Text describing a picked element, ready to paste into an agent's prompt.
+    static func describe(_ pick: [String: Any]) -> String {
+        let url = pick["url"] as? String ?? ""
+        let selector = pick["selector"] as? String ?? ""
+        var lines = ["Element in the browser at \(url)", "Selector: \(selector)"]
+        if let size = pick["size"] as? String, !size.isEmpty { lines.append("Size: \(size)") }
+        if let text = pick["text"] as? String, !text.isEmpty { lines.append("Text: \(text)") }
+        if let html = pick["html"] as? String, !html.isEmpty { lines += ["HTML:", html] }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Types the description into the window's most recently used terminal,
+    /// as a paste, and focuses it so the person can add their request. The
+    /// text is also put on the clipboard.
+    private func deliver(_ pick: [String: Any]) {
+        let text = Self.describe(pick)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        let terminals = (window?.windowController as? BaseTerminalController)?.surfaceTree.surfaces ?? []
+        let recent = terminals.compactMap { terminal in terminal.focusInstant.map { (terminal, $0) } }.max { $0.1 < $1.1 }?.0
+        guard let terminal = recent ?? terminals.first, let model = terminal.surfaceModel
+        else {
+            problem = "Copied the element to the clipboard. Open a terminal pane to send it to an agent."
+            return
+        }
+        model.sendText(text)
+        Ghostty.moveFocus(to: terminal, from: self)
+    }
+
+    static let pickerScript = #"""
+        return await new Promise(resolve => {
+          const box = document.createElement('div');
+          const tag = document.createElement('div');
+          box.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #4f8cff;'
+            + 'background:rgba(79,140,255,.12);border-radius:3px;transition:all 40ms linear;display:none';
+          tag.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;font:11px -apple-system,sans-serif;'
+            + 'background:#4f8cff;color:#fff;padding:2px 6px;border-radius:3px;display:none;white-space:nowrap';
+          document.documentElement.append(box, tag);
+          let current = null;
+          const css = window.CSS && CSS.escape ? CSS.escape : (s => s.replace(/[^\w-]/g, '\\$&'));
+          const step = el => {
+            let part = el.tagName.toLowerCase();
+            const classes = [...el.classList].filter(c => !/^(hover|focus|active)/.test(c)).slice(0, 2);
+            if (classes.length) part += '.' + classes.map(css).join('.');
+            const parent = el.parentElement;
+            if (parent) {
+              const same = [...parent.children].filter(c => c.tagName === el.tagName);
+              if (same.length > 1) part += ':nth-of-type(' + (same.indexOf(el) + 1) + ')';
+            }
+            return part;
+          };
+          const selectorFor = el => {
+            const parts = [];
+            for (let node = el; node && node.nodeType === 1 && parts.length < 5; node = node.parentElement) {
+              if (node.id && document.querySelectorAll('#' + css(node.id)).length === 1) { parts.unshift('#' + css(node.id)); break; }
+              parts.unshift(step(node));
+              if (node === document.body) break;
+            }
+            return parts.join(' > ');
+          };
+          const show = el => {
+            const r = el.getBoundingClientRect();
+            Object.assign(box.style, { display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+            tag.textContent = step(el) + '  ' + Math.round(r.width) + '×' + Math.round(r.height);
+            tag.style.display = 'block';
+            tag.style.left = Math.max(0, r.left) + 'px';
+            tag.style.top = (r.top > 22 ? r.top - 20 : r.bottom + 2) + 'px';
+          };
+          const finish = value => {
+            removeEventListener('mousemove', move, true);
+            removeEventListener('click', click, true);
+            removeEventListener('mousedown', swallow, true);
+            removeEventListener('mouseup', swallow, true);
+            removeEventListener('keydown', key, true);
+            box.remove(); tag.remove();
+            delete window.__goviPickCancel;
+            resolve(value);
+          };
+          const move = event => {
+            const el = document.elementFromPoint(event.clientX, event.clientY);
+            if (el && el !== current && el !== box && el !== tag) { current = el; show(el); }
+          };
+          const swallow = event => { event.preventDefault(); event.stopPropagation(); };
+          const click = event => {
+            swallow(event);
+            const el = current || document.elementFromPoint(event.clientX, event.clientY);
+            if (!el) return finish(null);
+            const r = el.getBoundingClientRect();
+            let html = el.outerHTML.replace(/\s+data-govi-ref="[^"]*"/g, '');
+            if (html.length > 2000) html = html.slice(0, 2000) + '…';
+            finish(JSON.stringify({ url: location.href, selector: selectorFor(el),
+              text: (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 300),
+              size: Math.round(r.width) + '×' + Math.round(r.height), html }));
+          };
+          const key = event => { if (event.key === 'Escape') { swallow(event); finish(null); } };
+          window.__goviPickCancel = () => finish(null);
+          addEventListener('mousemove', move, true);
+          addEventListener('mousedown', swallow, true);
+          addEventListener('mouseup', swallow, true);
+          addEventListener('click', click, true);
+          addEventListener('keydown', key, true);
+        });
+        """#
+}
+
+// MARK: - Settings
+
+struct GoviBrowserSettingsView: View {
+    @Environment(\.goviPalette) private var ui
+    @AppStorage(GoviBrowserPreferences.detectKey) private var detect = true
+    @AppStorage(GoviBrowserPreferences.keepDataKey) private var keepData = false
+    @State private var cleared: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Text("Browser panes sit next to your terminals. Open one with \(GoviShortcuts.shared.chord(.browser).display), from the + menu, or by Command-clicking a localhost link.")
+                .foregroundStyle(ui.muted).lineSpacing(4)
+            Toggle("Offer local servers that terminals print", isOn: $detect)
+            Text("When a terminal shows an address such as http://localhost:3000, its title bar offers to open it. Govi checks the visible text on this Mac every couple of seconds; nothing is sent anywhere.")
+                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
+            Toggle("Keep cookies and site data between launches", isOn: $keepData)
+            Text("Off: every browser pane starts signed out and forgets everything when it closes. On: browser panes share one store that only Govi uses, so sign-ins persist. Applies to browser panes opened after the change.")
+                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
+            HStack {
+                Button("Clear Saved Site Data") {
+                    let store = WKWebsiteDataStore.default()
+                    store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {
+                        cleared = "Cleared cookies, storage and caches."
+                    }
+                }
+                if let cleared { Text(cleared).font(GoviInk.font(11)).foregroundStyle(ui.muted) }
+            }.controlSize(.small)
+        }
     }
 }

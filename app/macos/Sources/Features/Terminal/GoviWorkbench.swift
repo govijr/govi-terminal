@@ -31,6 +31,7 @@ final class GoviNotebook: ObservableObject {
 
 struct GoviWorkbench<Content: View>: View {
     @Environment(\.goviPalette) private var ui
+    @Environment(\.goviFloatingPanes) private var floatingPanes
 
     @ObservedObject var ghostty: Ghostty.App
     var surface: Ghostty.SurfaceView?
@@ -67,6 +68,7 @@ struct GoviWorkbench<Content: View>: View {
     @AppStorage("GoviSidebarWidth") private var sidebarWidth: Double = 228
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var splash = GoviLaunchSplash.claim()
+    @State private var splashReplayID = UUID()
     @State private var focusMode = false
     @State private var collapsedDirectories: Set<String> = []
     /// Each workspace's directory, fixed when first known so `cd` doesn't regroup it.
@@ -83,6 +85,8 @@ struct GoviWorkbench<Content: View>: View {
     @State private var outputSearch: GoviOutputSnapshot?
     @State private var filter = ""
     @State private var filterVisible = false
+    @AppStorage("GoviSidebarGrouping") private var groupingRaw = GoviSidebarGrouping.project.rawValue
+    private var grouping: GoviSidebarGrouping { GoviSidebarGrouping(rawValue: groupingRaw) ?? .project }
     private let sidebarRefresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
     private var directory: String { pwd ?? surface?.pwd ?? FileManager.default.homeDirectoryForCurrentUser.path }
 
@@ -194,6 +198,8 @@ struct GoviWorkbench<Content: View>: View {
                     }
                 }
                 .frame(height: 42)
+            } else if let floatingPanes {
+                GoviFocusModeMinimizedBar(floating: floatingPanes)
             }
         }.padding(.bottom, 10)
     }
@@ -233,7 +239,15 @@ struct GoviWorkbench<Content: View>: View {
                     .transition(.opacity.combined(with: .offset(y: -6)))
                 }
             }
-            .overlay { if splash { GoviLaunchSplash { splash = false } } }
+            .overlay {
+                if splash {
+                    let replayID = splashReplayID
+                    GoviLaunchSplash {
+                        // A previous replay's cancelled task must not dismiss the new one.
+                        if splashReplayID == replayID { splash = false }
+                    }.id(replayID)
+                }
+            }
     }
 
     private var lifecycleWorkspace: some View {
@@ -308,6 +322,11 @@ struct GoviWorkbench<Content: View>: View {
 
     private var observedWorkspace: some View {
         lifecycleWorkspace
+            .onReceive(NotificationCenter.default.publisher(for: .goviReplayLaunchSplash)) { note in
+                guard let window = note.object as? NSWindow, window === surface?.window else { return }
+                splashReplayID = UUID()
+                splash = true
+            }
             .onReceive(NotificationCenter.default.publisher(for: .goviShowSettings)) { _ in
                 if surface?.window == NSApp.keyWindow { toggleSettings() }
             }
@@ -548,67 +567,71 @@ struct GoviWorkbench<Content: View>: View {
             HStack(spacing: 2) {
                 Text("Workspaces").font(GoviInk.font(14).weight(.semibold)).foregroundStyle(ui.ink)
                 Spacer(minLength: 0)
-                GoviIconButton(symbol: "line.3.horizontal.decrease", help: "Filter terminals", on: filterVisible) {
-                    filterVisible.toggle()
-                    if !filterVisible { filter = "" }
+                Menu {
+                    Picker("Group by", selection: $groupingRaw) {
+                        ForEach(GoviSidebarGrouping.allCases) { Text($0.title).tag($0.rawValue) }
+                    }.pickerStyle(.inline)
+                    Divider()
+                    Toggle(
+                        "Filter panes",
+                        isOn: Binding(
+                            get: { filterVisible },
+                            set: {
+                                filterVisible = $0
+                                if !$0 { filter = "" }
+                            }))
+                } label: {
+                    GoviSymbol(symbol: "line.3.horizontal.decrease").frame(width: GoviChromeMetrics.button, height: GoviChromeMetrics.button)
+                        .modifier(GoviHoverHighlight(on: filterVisible || grouping != .project))
                 }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("Group and filter the sidebar").accessibilityLabel("Group and filter the sidebar")
                 GoviIconButton(symbol: "folder.badge.plus", help: "Add project folder", action: addSpace)
-            }.padding(.leading, 16).padding(.trailing, 8).frame(height: 46)
-            Button {
-                launchTerminal(.init())
-            } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: "plus").font(.system(size: 12, weight: .medium)).frame(width: GoviSidebarMetrics.icon)
-                    Text("New workspace")
-                    Spacer(minLength: 0)
-                    Text(shortcuts.chord(.newWorkspace).display).font(GoviInk.font(11)).foregroundStyle(ui.muted)
-                }.font(GoviInk.font(13)).foregroundStyle(ui.ink)
-                    .padding(.horizontal, 10).frame(height: 34).contentShape(Rectangle())
-            }.buttonStyle(.plain).modifier(GoviProminentRowStyle()).padding(.horizontal, 8)
-                .help("New workspace in the current folder")
+                GoviIconButton(symbol: "plus", help: "New workspace in the current folder · \(shortcuts.chord(.newWorkspace).display)") {
+                    launchTerminal(.init())
+                }
+            }.padding(.leading, 8 + GoviSidebarMetrics.inset).padding(.trailing, 8).frame(height: 46)
             if filterVisible {
                 HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(ui.muted)
-                    TextField("Filter terminals…", text: $filter).textFieldStyle(.plain).font(GoviInk.font(12))
+                    TextField("Filter panes…", text: $filter).textFieldStyle(.plain).font(GoviInk.font(12))
                 }.padding(.horizontal, 10).frame(height: 30)
                     .background(ui.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .padding(.horizontal, 8).padding(.top, 8)
+                    .padding(.horizontal, 8).padding(.bottom, 4)
             }
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    sidebarSection("Open projects", icon: "rectangle.stack") {
-                        ForEach(directoryGroups) { group in directorySection(group) }
+                VStack(alignment: .leading, spacing: 18) {
+                    statusSummary
+                    sidebarSection(grouping.section) {
+                        if grouping == .project {
+                            ForEach(directoryGroups) { group in directorySection(group) }
+                        } else {
+                            ForEach(paneGroups) { group in paneGroupSection(group) }
+                            ForEach(windows, id: \.windowNumber) { window in tasksRow(window) }
+                        }
                     }
                     if !detached.sessions.isEmpty {
-                        sidebarSection("Running in background", icon: "clock.arrow.circlepath") { backgroundSessions }
+                        sidebarSection("Running in background") { backgroundSessions }
                     }
                     if !notebook.spaces.isEmpty {
-                        sidebarSection("Saved projects", icon: "bookmark") { projectShortcuts }
+                        sidebarSection("Saved projects") { projectShortcuts }
                     }
                     if filter.isEmpty {
-                        sidebarSection("Remote", icon: "network") {
+                        sidebarSection("Remote") {
                             GoviRemoteSidebarRows(open: { connectRemote($0, split: $1) }, edit: showRemoteHosts)
                         }
                     }
-                }.padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 8)
+                }.padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 8)
             }
-            Spacer(minLength: 6)
-            HStack(spacing: 2) {
-                savedCommandsMenu
-                Spacer()
-                Text(sessionCountLabel).font(GoviInk.font(11)).foregroundStyle(ui.muted).padding(.trailing, 8)
-            }.padding(.horizontal, 8).frame(height: 44)
+            Spacer(minLength: 0)
+            Rectangle().fill(ui.ink.opacity(0.08)).frame(height: 0.5).padding(.horizontal, 8 + GoviSidebarMetrics.inset)
+            savedCommandsMenu.padding(.horizontal, 8).padding(.vertical, 6)
         }.foregroundStyle(ui.ink)
             .modifier(GoviSidebarGlass())
     }
 
-    private var sessionCountLabel: String {
-        let count = windows.reduce(0) { $0 + leaves($1).count }
-        return "\(count) terminal\(count == 1 ? "" : "s")"
-    }
-
-    /// A collapsible group with an icon header, like a mail or browser sidebar.
-    @ViewBuilder private func sidebarSection<Rows: View>(_ title: String, icon: String, @ViewBuilder rows: () -> Rows) -> some View {
+    /// A collapsible group under a small label, so headers never read as rows.
+    @ViewBuilder private func sidebarSection<Rows: View>(_ title: String, @ViewBuilder rows: () -> Rows) -> some View {
         let open = !collapsedSections.contains(title) || !filter.isEmpty
         VStack(alignment: .leading, spacing: 2) {
             GoviHoverRow { hovering in
@@ -617,14 +640,13 @@ struct GoviWorkbench<Content: View>: View {
                         if collapsedSections.contains(title) { collapsedSections.remove(title) } else { collapsedSections.insert(title) }
                     }
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: icon).font(.system(size: 12)).frame(width: GoviSidebarMetrics.icon)
-                        Text(title).font(GoviInk.font(12.5))
-                        Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+                    HStack(spacing: 5) {
+                        Text(title).font(GoviInk.font(11).weight(.semibold))
+                        Image(systemName: "chevron.right").font(.system(size: 7.5, weight: .bold))
                             .rotationEffect(.degrees(open ? 90 : 0)).opacity(hovering || !open ? 1 : 0)
                         Spacer(minLength: 0)
-                    }.foregroundStyle(ui.muted)
-                        .padding(.horizontal, GoviSidebarMetrics.inset).frame(height: 26).contentShape(Rectangle())
+                    }.foregroundStyle(ui.muted.opacity(hovering ? 1 : 0.7))
+                        .padding(.horizontal, GoviSidebarMetrics.inset).frame(height: 22).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel(open ? "Collapse \(title)" : "Expand \(title)")
             }
             if open { rows() }
@@ -677,6 +699,12 @@ struct GoviWorkbench<Content: View>: View {
                 || ($0.url?.absoluteString ?? "").localizedCaseInsensitiveContains(filter)
         }
     }
+    private func visibleEditorPanes(_ window: NSWindow) -> [GoviEditorPaneView] {
+        let panes = (window.windowController as? TerminalController)?.surfaceTree.compactMap { $0 as? GoviEditorPaneView } ?? []
+        return panes.filter {
+            filter.isEmpty || $0.displayPath.localizedCaseInsensitiveContains(filter) || $0.root.path.localizedCaseInsensitiveContains(filter)
+        }
+    }
     private func directoryName(_ path: String) -> String {
         if path.hasPrefix(Self.remotePrefix) { return String(path.dropFirst(Self.remotePrefix.count)) }
         return path == FileManager.default.homeDirectoryForCurrentUser.path ? "Home" : URL(fileURLWithPath: path).lastPathComponent
@@ -700,7 +728,9 @@ struct GoviWorkbench<Content: View>: View {
     }
 
     @ViewBuilder private func directorySection(_ group: DirectoryGroup) -> some View {
-        let shown = group.workspaces.filter { !visibleLeaves($0).isEmpty || !visibleWebPanes($0).isEmpty }
+        let shown = group.workspaces.filter {
+            !visibleLeaves($0).isEmpty || !visibleWebPanes($0).isEmpty || !visibleEditorPanes($0).isEmpty
+        }
         if !shown.isEmpty {
             let open = !collapsedDirectories.contains(group.id) || !filter.isEmpty
             let waiting = group.workspaces.flatMap(leaves).filter { activity.info[$0.id]?.state.wantsAttention == true }.count
@@ -716,12 +746,10 @@ struct GoviWorkbench<Content: View>: View {
                             }
                         }
                         HStack(spacing: 6) {
-                            Image(systemName: target == nil ? "folder.fill" : "network").font(.system(size: 11)).frame(
-                                width: GoviSidebarMetrics.icon
-                            )
-                            .foregroundStyle(ui.tone(for: group.id))
-                            Text(directoryName(group.id)).font(GoviInk.font(13)).foregroundStyle(ui.ink).lineLimit(1).truncationMode(
-                                .middle)
+                            GoviGlyph(kind: target == nil ? .folder : .server)
+                                .foregroundStyle(target == nil ? ui.tone(for: group.id) : ui.color(for: .server))
+                            Text(directoryName(group.id)).font(GoviInk.font(12.5).weight(.medium)).foregroundStyle(ui.ink).lineLimit(1)
+                                .truncationMode(.tail)
                         }
                         if !open && waiting > 0 { waitingBadge(waiting) }
                         Spacer(minLength: 0)
@@ -741,45 +769,192 @@ struct GoviWorkbench<Content: View>: View {
                 }
                 if open {
                     ForEach(shown, id: \.windowNumber) { window in
-                        ForEach(visibleLeaves(window)) { item in
-                            GoviSidebarTerminal(
-                                surface: item, active: item.id == surface?.id && !tasksTabs.showing.contains(window.windowNumber)
-                            ) {
-                                tasksTabs.setShowing(window.windowNumber, false)
-                                selectWorkspace(window)
-                                (window.windowController as? TerminalController)?.focusedSurface = item
-                                window.makeFirstResponder(item)
-                            }.padding(.leading, GoviSidebarMetrics.indent)
+                        ForEach(panes(in: window)) { pane in
+                            paneRow(pane, in: window).padding(.leading, GoviSidebarMetrics.indent)
                         }
-                        ForEach(visibleWebPanes(window)) { item in
-                            let controller = window.windowController as? TerminalController
-                            GoviSidebarBrowser(
-                                pane: item,
-                                active: controller?.focusedPane === item && !tasksTabs.showing.contains(window.windowNumber)
-                            ) {
-                                tasksTabs.setShowing(window.windowNumber, false)
-                                selectWorkspace(window)
-                                controller?.focusedPane = item
-                                window.makeFirstResponder(item.paneFocusTarget)
-                            }.padding(.leading, GoviSidebarMetrics.indent)
-                        }
-                        if tasksTabs.tabs.contains(window.windowNumber)
-                            && (filter.isEmpty || "tasks".localizedCaseInsensitiveContains(filter))
-                        {
-                            GoviSidebarTasksTab(active: tasksTabs.showing.contains(window.windowNumber)) {
-                                selectWorkspace(window)
-                                tasksTabs.setShowing(window.windowNumber, true)
-                            } close: {
-                                tasksTabs.close(window.windowNumber)
-                                if window === surface?.window {
-                                    show(nil)
-                                    navigation.record(surface?.id)
-                                }
-                            }.padding(.leading, GoviSidebarMetrics.indent)
-                        }
+                        tasksRow(window).padding(.leading, GoviSidebarMetrics.indent)
                     }
                 }
             }
+        }
+    }
+
+    // MARK: Pane rows and groups
+
+    /// Every pane of a workspace that passes the filter: terminals, then browsers, then editors.
+    private func panes(in window: NSWindow) -> [GoviPaneView] {
+        visibleLeaves(window) + visibleWebPanes(window) + visibleEditorPanes(window)
+    }
+
+    /// One row for any kind of pane. Only the focused pane of the front workspace is
+    /// marked, so the sidebar never shows two selections.
+    @ViewBuilder private func paneRow(_ pane: GoviPaneView, in window: NSWindow) -> some View {
+        let controller = window.windowController as? TerminalController
+        let front = (window.tabGroup?.selectedWindow ?? window) === window && !tasksTabs.showing.contains(window.windowNumber)
+        let focused = controller?.focusedPane
+        let select = {
+            tasksTabs.setShowing(window.windowNumber, false)
+            selectWorkspace(window)
+        }
+        if let item = pane as? Ghostty.SurfaceView {
+            GoviSidebarTerminal(surface: item, active: front && (focused === item || (focused == nil && item.id == surface?.id))) {
+                select()
+                controller?.focusedSurface = item
+                window.makeFirstResponder(item)
+            }
+        } else if let item = pane as? GoviWebPaneView {
+            GoviSidebarBrowser(pane: item, active: front && focused === item) {
+                select()
+                controller?.focusedPane = item
+                window.makeFirstResponder(item.paneFocusTarget)
+            }
+        } else if let item = pane as? GoviEditorPaneView {
+            GoviSidebarEditor(pane: item, active: front && focused === item) {
+                select()
+                controller?.focusedPane = item
+                window.makeFirstResponder(item.paneFocusTarget)
+            }
+        }
+    }
+
+    @ViewBuilder private func tasksRow(_ window: NSWindow) -> some View {
+        if tasksTabs.tabs.contains(window.windowNumber) && (filter.isEmpty || "tasks".localizedCaseInsensitiveContains(filter)) {
+            GoviSidebarTasksTab(active: tasksTabs.showing.contains(window.windowNumber)) {
+                selectWorkspace(window)
+                tasksTabs.setShowing(window.windowNumber, true)
+            } close: {
+                tasksTabs.close(window.windowNumber)
+                if window === surface?.window {
+                    show(nil)
+                    navigation.record(surface?.id)
+                }
+            }
+        }
+    }
+
+    private struct PaneEntry: Identifiable {
+        let pane: GoviPaneView
+        let window: NSWindow
+        var id: UUID { pane.id }
+    }
+    private struct PaneGroup: Identifiable {
+        let id: String
+        let entries: [PaneEntry]
+    }
+
+    private func paneState(_ pane: GoviPaneView) -> GoviActivityState {
+        pane is Ghostty.SurfaceView ? activity.info[pane.id]?.state ?? .idle : .idle
+    }
+
+    /// The group a pane falls in under the current grouping, and where that group sorts.
+    private func groupKey(_ pane: GoviPaneView) -> (id: String, rank: Int) {
+        let terminal = pane as? Ghostty.SurfaceView
+        switch grouping {
+        case .project:
+            return ("", 0)
+        case .agent:
+            if let terminal {
+                if let agent = GoviSidebarTerminal.agent(in: terminal, info: activity.info[terminal.id] ?? .init()) {
+                    return ("agent:" + agent.rawValue, GoviAgent.allCases.firstIndex(of: agent) ?? 0)
+                }
+                return ("kind:terminal", 100)
+            }
+            return pane is GoviWebPaneView ? ("kind:web", 101) : ("kind:editor", 102)
+        case .machine:
+            if let host = terminal?.goviLaunch.remote?.name { return ("host:" + host, 1) }
+            return ("host:", 0)
+        case .status:
+            let state = paneState(pane)
+            return ("state:" + state.rawValue, GoviActivityState.byUrgency.firstIndex(of: state) ?? 0)
+        }
+    }
+
+    private var paneGroups: [PaneGroup] {
+        var order: [(id: String, rank: Int)] = []
+        var members: [String: [PaneEntry]] = [:]
+        for window in windows {
+            for pane in panes(in: window) {
+                let key = groupKey(pane)
+                if members[key.id] == nil { order.append(key) }
+                members[key.id, default: []].append(.init(pane: pane, window: window))
+            }
+        }
+        // Equal ranks (two remote hosts, say) keep the order they first appear in.
+        return order.enumerated().sorted { ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset) }
+            .map { PaneGroup(id: $0.element.id, entries: members[$0.element.id] ?? []) }
+    }
+
+    private func groupTitle(_ id: String) -> String {
+        let value = String(id.drop { $0 != ":" }.dropFirst())
+        switch id.prefix { $0 != ":" } {
+        case "agent": return GoviAgent(rawValue: value)?.name ?? value
+        case "host": return value.isEmpty ? "This Mac" : value
+        case "state": return GoviActivityState(rawValue: value)?.label ?? value
+        default: return value == "web" ? "Browsers" : value == "editor" ? "Editors" : "Terminals"
+        }
+    }
+
+    @ViewBuilder private func groupIcon(_ id: String) -> some View {
+        let value = String(id.drop { $0 != ":" }.dropFirst())
+        switch id.prefix { $0 != ":" } {
+        case "agent":
+            if let agent = GoviAgent(rawValue: value) { GoviAgentGlyph(agent: agent).foregroundStyle(ui.tone(for: agent.rawValue)) }
+        case "host":
+            GoviGlyph(kind: value.isEmpty ? .laptop : .server).foregroundStyle(value.isEmpty ? ui.accent : ui.color(for: .server))
+        case "state":
+            Circle().fill((GoviActivityState(rawValue: value) ?? .idle).tint(ui)).frame(width: 8, height: 8)
+        default:
+            let kind: GoviGlyph.Kind = value == "web" ? .globe : value == "editor" ? .code : .terminal
+            GoviGlyph(kind: kind).foregroundStyle(ui.color(for: kind))
+        }
+    }
+
+    @ViewBuilder private func paneGroupSection(_ group: PaneGroup) -> some View {
+        let key = grouping.rawValue + "/" + group.id
+        let open = !collapsedDirectories.contains(key) || !filter.isEmpty
+        let title = groupTitle(group.id)
+        let toggle = {
+            if collapsedDirectories.contains(key) { collapsedDirectories.remove(key) } else { collapsedDirectories.insert(key) }
+        }
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 4) {
+                chevron(open, label: "Toggle \(title)", toggle: toggle)
+                HStack(spacing: 6) {
+                    groupIcon(group.id).frame(width: GoviSidebarMetrics.icon, height: GoviSidebarMetrics.icon)
+                    Text(title).font(GoviInk.font(12.5).weight(.medium)).foregroundStyle(ui.ink).lineLimit(1)
+                    Text("\(group.entries.count)").font(GoviInk.font(11)).monospacedDigit()
+                }
+                Spacer(minLength: 0)
+            }.foregroundStyle(ui.muted).modifier(GoviSidebarRowStyle()).onTapGesture(perform: toggle)
+            if open {
+                ForEach(group.entries) { entry in
+                    paneRow(entry.pane, in: entry.window).padding(.leading, GoviSidebarMetrics.indent)
+                }
+            }
+        }
+    }
+
+    /// A one-line tally of what the agents are doing; click it to group by status.
+    @ViewBuilder private var statusSummary: some View {
+        let states = windows.flatMap(leaves).map(paneState).filter { $0 != .idle }
+        if !states.isEmpty && grouping != .status {
+            HStack(spacing: 10) {
+                ForEach(GoviActivityState.byUrgency, id: \.self) { state in
+                    let count = states.filter { $0 == state }.count
+                    if count > 0 {
+                        HStack(spacing: 4) {
+                            Circle().fill(state.tint(ui)).frame(width: 6, height: 6)
+                            Text("\(count) \(state.label.lowercased())").lineLimit(1)
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted)
+            .padding(.horizontal, GoviSidebarMetrics.inset).frame(height: 20).contentShape(Rectangle())
+            .onTapGesture { groupingRaw = GoviSidebarGrouping.status.rawValue }
+            .help("Group the sidebar by status")
+            .accessibilityElement(children: .combine).accessibilityAddTraits(.isButton)
         }
     }
 
@@ -804,14 +979,14 @@ struct GoviWorkbench<Content: View>: View {
                                 if let agent {
                                     GoviAgentGlyph(agent: agent).foregroundStyle(ui.tone(for: agent.rawValue))
                                 } else {
-                                    Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(ui.accent)
+                                    GoviGlyph(kind: .terminal).foregroundStyle(ui.color(for: .terminal))
                                 }
                             }.frame(width: GoviSidebarMetrics.icon)
-                            Text(agent?.name ?? (session.agent.isEmpty ? "Terminal" : session.agent)).foregroundStyle(ui.ink.opacity(0.85))
-                                .lineLimit(1)
+                            Text(agent?.name ?? (session.agent.isEmpty ? "Terminal" : session.agent))
+                                .foregroundStyle(hovering ? ui.ink : ui.muted).lineLimit(1)
                             Text(GoviPaneNaming.shortPath(session.cwd)).font(GoviInk.font(10.5)).lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 0)
-                        }.font(GoviInk.font(12.5).weight(.light)).frame(maxWidth: .infinity, alignment: .leading)
+                        }.font(GoviInk.font(12.5)).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain).foregroundStyle(ui.muted).modifier(GoviSidebarRowStyle())
                         .help("Still running. Click to open it in a new workspace.")
                         .contextMenu {
@@ -831,11 +1006,10 @@ struct GoviWorkbench<Content: View>: View {
                         openFolder(space.path)
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "folder.fill").font(.system(size: 11)).frame(width: GoviSidebarMetrics.icon)
-                                .foregroundStyle(ui.tone(for: space.path))
+                            GoviGlyph(kind: .folder).foregroundStyle(ui.tone(for: space.path))
                             Text(space.name).foregroundStyle(hovering ? ui.ink : ui.muted).lineLimit(1)
                             Spacer(minLength: 0)
-                        }.font(GoviInk.font(12.5).weight(.light)).frame(maxWidth: .infinity, alignment: .leading)
+                        }.font(GoviInk.font(12.5)).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain).foregroundStyle(ui.muted).modifier(GoviSidebarRowStyle()).help(space.path)
                         .contextMenu {
                             Button("Open in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: space.path) }
@@ -857,10 +1031,14 @@ struct GoviWorkbench<Content: View>: View {
                 }
             }
         } label: {
-            GoviSymbol(symbol: "bookmark").frame(width: GoviChromeMetrics.button, height: GoviChromeMetrics.button).modifier(
-                GoviHoverHighlight())
+            HStack(spacing: 8) {
+                GoviGlyph(kind: .bookmark)
+                Text("Saved commands").font(GoviInk.font(12.5))
+                Spacer(minLength: 0)
+            }.foregroundStyle(ui.muted).modifier(GoviSidebarRowStyle())
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Saved commands").accessibilityLabel("Saved commands")
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).help("Fill the terminal with a saved command")
+        .accessibilityLabel("Saved commands")
     }
 
     private var sidebarDivider: some View {
@@ -1018,6 +1196,7 @@ struct GoviWorkbench<Content: View>: View {
 }
 
 extension Notification.Name {
+    static let goviReplayLaunchSplash = Notification.Name("goviReplayLaunchSplash")
     static let goviAttention = Notification.Name("goviAttention")
     static let goviTemplates = Notification.Name("goviTemplates")
     static let goviSaveTemplate = Notification.Name("goviSaveTemplate")

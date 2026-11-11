@@ -577,8 +577,13 @@ struct GoviRemoteRow: View {
     @Environment(\.goviPalette) private var ui
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: entry.symbol).font(.system(size: 11)).frame(width: GoviSidebarMetrics.icon)
-                .foregroundStyle(ui.tone(for: entry.target.host))
+            Group {
+                if compact {
+                    GoviGlyph(kind: .server).foregroundStyle(ui.color(for: .server))
+                } else {
+                    Image(systemName: entry.symbol).font(.system(size: 11)).foregroundStyle(ui.tone(for: entry.target.host))
+                }
+            }.frame(width: GoviSidebarMetrics.icon)
                 .overlay(alignment: .bottomTrailing) {
                     if let online = entry.online {
                         Circle().fill(online ? Color.green : ui.muted.opacity(0.6)).frame(width: 5, height: 5)
@@ -621,7 +626,7 @@ struct GoviRemoteSidebarRows: View {
                         open(entry.target, false)
                     } label: {
                         GoviRemoteRow(entry: entry, compact: true).foregroundStyle(hovering ? ui.ink : ui.muted)
-                            .font(GoviInk.font(12.5).weight(.light)).frame(maxWidth: .infinity, alignment: .leading)
+                            .font(GoviInk.font(12.5)).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain).modifier(GoviSidebarRowStyle())
                         .help("\(entry.detail)\nClick to connect in a new workspace")
                         .contextMenu {
@@ -642,11 +647,11 @@ struct GoviRemoteSidebarRows: View {
                     edit(nil)
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "ellipsis.circle").font(.system(size: 11)).frame(width: GoviSidebarMetrics.icon)
+                        GoviGlyph(kind: .more)
                         Text("All remote hosts…")
                         Spacer(minLength: 0)
                         Text(GoviShortcuts.shared.chord(.remoteHosts).display).font(GoviInk.font(10.5)).opacity(hovering ? 1 : 0)
-                    }.foregroundStyle(hovering ? ui.ink : ui.muted).font(GoviInk.font(12.5).weight(.light)).contentShape(Rectangle())
+                    }.foregroundStyle(hovering ? ui.ink : ui.muted).font(GoviInk.font(12.5)).contentShape(Rectangle())
                 }.buttonStyle(.plain).modifier(GoviSidebarRowStyle())
             }
         }

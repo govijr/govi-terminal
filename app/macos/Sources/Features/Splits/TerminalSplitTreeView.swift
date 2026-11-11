@@ -1,21 +1,73 @@
 import SwiftUI
 
 struct TerminalSplitTreeView: View {
+    @Environment(\.goviPalette) private var ui
     let tree: SplitTree<GoviPaneView>
+    @ObservedObject var floating: GoviFloatingPanes
     let onResize: (SplitTree<GoviPaneView>.Node, Double) -> Void
 
     var body: some View {
-        if let node = tree.zoomed ?? tree.root {
-            TerminalSplitSubtreeView(
-                node: node,
-                isRoot: node == tree.root,
-                onResize: onResize)
-            // This is necessary because we can't rely on SwiftUI's implicit
-            // structural identity to detect changes to this view. Due to
-            // the tree structure of splits it could result in bad beaviors.
-            // See: https://github.com/ghostty-org/ghostty/issues/7546
-            .id(node.structuralIdentity)
+        let floatingIDs = floating.ids.intersection(tree.map(\.id))
+        let shown = Self.docked(tree, without: floatingIDs)
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                if let node = shown.zoomed ?? shown.root {
+                    TerminalSplitSubtreeView(
+                        node: node,
+                        isRoot: node == shown.root,
+                        onResize: { node, ratio in
+                            // Floating panes are left out of what's drawn; resize the matching split in the real tree.
+                            guard let real = Self.realNode(for: node, in: tree, without: floatingIDs) else { return }
+                            onResize(real, ratio)
+                        })
+                    // This is necessary because we can't rely on SwiftUI's implicit
+                    // structural identity to detect changes to this view. Due to
+                    // the tree structure of splits it could result in bad beaviors.
+                    // See: https://github.com/ghostty-org/ghostty/issues/7546
+                    .id(node.structuralIdentity)
+                } else if !floatingIDs.isEmpty {
+                    Text("Every pane is floating. Press a panel's detach button to dock it.")
+                        .font(GoviInk.font(12)).foregroundStyle(ui.muted)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                ForEach(tree.filter { floatingIDs.contains($0.id) && !floating.isMinimized($0.id) }, id: \.id) { pane in
+                    GoviFloatingPaneWindow(floating: floating, pane: pane, area: geometry.size)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            .background(GoviFloatingAreaProbe(floating: floating))
         }
+    }
+
+    /// The tree as laid out: floating panes removed, and no zoom on a branch that holds one.
+    static func docked(_ tree: SplitTree<GoviPaneView>, without ids: Set<UUID>) -> SplitTree<GoviPaneView> {
+        guard !ids.isEmpty else { return tree }
+        var result = tree
+        if let zoomed = tree.zoomed, zoomed.leaves().contains(where: { ids.contains($0.id) }) {
+            result = .init(root: tree.root, zoomed: nil)
+        }
+        for pane in tree where ids.contains(pane.id) { result = result.remove(.leaf(view: pane)) }
+        return result
+    }
+
+    /// The split in `tree` that a split of the docked tree stands for: removing a
+    /// leaf only collapses its parent, so the surviving splits keep their sides.
+    static func realNode(
+        for node: SplitTree<GoviPaneView>.Node, in tree: SplitTree<GoviPaneView>, without ids: Set<UUID>
+    ) -> SplitTree<GoviPaneView>.Node? {
+        guard !ids.isEmpty else { return node }
+        guard case .split(let shown) = node, let root = tree.root else { return nil }
+        let left = shown.left.leaves().map(\.id), right = shown.right.leaves().map(\.id)
+        func search(_ candidate: SplitTree<GoviPaneView>.Node) -> SplitTree<GoviPaneView>.Node? {
+            guard case .split(let split) = candidate else { return nil }
+            if split.left.leaves().map(\.id).filter({ !ids.contains($0) }) == left,
+                split.right.leaves().map(\.id).filter({ !ids.contains($0) }) == right
+            {
+                return candidate
+            }
+            return search(split.left) ?? search(split.right)
+        }
+        return search(root)
     }
 }
 
@@ -31,15 +83,7 @@ struct TerminalSplitSubtreeView: View {
     var body: some View {
         switch (node) {
         case .leaf(let leafView):
-            if let surface = leafView as? Ghostty.SurfaceView {
-                GoviTerminalPane(
-                    surface: surface,
-                    isSplit: !isRoot)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityLabel("Terminal pane")
-            } else if let web = leafView as? GoviWebPaneView {
-                GoviWebPane(pane: web, isSplit: !isRoot)
-            }
+            GoviPaneLeaf(pane: leafView, isSplit: !isRoot)
 
         case .split(let split):
             let splitViewDirection: SplitViewDirection = switch (split.direction) {

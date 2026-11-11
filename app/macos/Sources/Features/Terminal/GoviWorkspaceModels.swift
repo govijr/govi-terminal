@@ -63,16 +63,33 @@ struct GoviWebPaneRecord: Codable, Equatable, Identifiable {
     }
 }
 
+/// An editor pane: its folder, and the open file and line. Unsaved edits are
+/// never written here; closing or quitting asks about them first.
+struct GoviEditorPaneRecord: Codable, Equatable, Identifiable {
+    var id: UUID
+    /// The folder shown in the file tree.
+    var root: String
+    /// The open file, or empty.
+    var file: String
+    var line: Int
+
+    var isValid: Bool {
+        let path = { (text: String) in text.hasPrefix("/") && !text.contains("\0") && text.utf8.count < 4096 }
+        return path(root) && (file.isEmpty || path(file)) && line >= 1 && line < 10_000_000
+    }
+}
+
 indirect enum GoviWorkspaceLayout: Codable, Equatable {
     case terminal(GoviPaneRecord)
     case web(GoviWebPaneRecord)
+    case editor(GoviEditorPaneRecord)
     case split(vertical: Bool, ratio: Double, first: GoviWorkspaceLayout, second: GoviWorkspaceLayout)
 
     /// Terminal panes, in layout order.
     var panes: [GoviPaneRecord] {
         switch self {
         case .terminal(let pane): return [pane]
-        case .web: return []
+        case .web, .editor: return []
         case .split(_, _, let first, let second): return first.panes + second.panes
         }
     }
@@ -80,9 +97,18 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
     /// Browser panes, in layout order.
     var webPanes: [GoviWebPaneRecord] {
         switch self {
-        case .terminal: return []
+        case .terminal, .editor: return []
         case .web(let pane): return [pane]
         case .split(_, _, let first, let second): return first.webPanes + second.webPanes
+        }
+    }
+
+    /// Editor panes, in layout order.
+    var editorPanes: [GoviEditorPaneRecord] {
+        switch self {
+        case .terminal, .web: return []
+        case .editor(let pane): return [pane]
+        case .split(_, _, let first, let second): return first.editorPanes + second.editorPanes
         }
     }
 
@@ -91,15 +117,16 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
         switch self {
         case .terminal(let pane): return [pane.id]
         case .web(let pane): return [pane.id]
+        case .editor(let pane): return [pane.id]
         case .split(_, _, let first, let second): return first.paneIDs + second.paneIDs
         }
     }
 
-    /// Transforms terminal panes; browser panes pass through unchanged.
+    /// Transforms terminal panes; other panes pass through unchanged.
     func replacingPanes(_ transform: (GoviPaneRecord) -> GoviPaneRecord) -> Self {
         switch self {
         case .terminal(let pane): return .terminal(transform(pane))
-        case .web: return self
+        case .web, .editor: return self
         case .split(let vertical, let ratio, let first, let second):
             return .split(
                 vertical: vertical, ratio: ratio, first: first.replacingPanes(transform), second: second.replacingPanes(transform))
@@ -108,12 +135,23 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
 
     func replacingWebPanes(_ transform: (GoviWebPaneRecord) -> GoviWebPaneRecord) -> Self {
         switch self {
-        case .terminal: return self
+        case .terminal, .editor: return self
         case .web(let pane): return .web(transform(pane))
         case .split(let vertical, let ratio, let first, let second):
             return .split(
                 vertical: vertical, ratio: ratio, first: first.replacingWebPanes(transform),
                 second: second.replacingWebPanes(transform))
+        }
+    }
+
+    func replacingEditorPanes(_ transform: (GoviEditorPaneRecord) -> GoviEditorPaneRecord) -> Self {
+        switch self {
+        case .terminal, .web: return self
+        case .editor(let pane): return .editor(transform(pane))
+        case .split(let vertical, let ratio, let first, let second):
+            return .split(
+                vertical: vertical, ratio: ratio, first: first.replacingEditorPanes(transform),
+                second: second.replacingEditorPanes(transform))
         }
     }
 
@@ -127,6 +165,8 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
         case .terminal(let pane):
             return pane.directory.hasPrefix("/") && !pane.directory.contains("\0") && pane.directory.utf8.count < 4096
         case .web(let pane):
+            return pane.isValid
+        case .editor(let pane):
             return pane.isValid
         case .split(_, let ratio, let first, let second):
             return ratio.isFinite && ratio >= 0.05 && ratio <= 0.95 && first.validate(depth: depth + 1) && second.validate(depth: depth + 1)
@@ -144,6 +184,10 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
             var copy = pane
             copy.id = UUID()
             return copy
+        }.replacingEditorPanes { pane in
+            var copy = pane
+            copy.id = UUID()
+            return copy
         }
     }
 }
@@ -158,9 +202,10 @@ struct GoviWorkspaceRecord: Codable, Equatable, Identifiable {
 }
 
 struct GoviRecoveryCheckpoint: Codable, Equatable {
-    /// Version 2 adds browser panes. Version 1 checkpoints (terminals only)
-    /// still load; an older Govi rejects version 2 rather than misreading it.
-    static let currentVersion = 2
+    /// Version 2 adds browser panes and version 3 editor panes. Older
+    /// checkpoints still load; an older Govi rejects a newer version rather
+    /// than misreading it.
+    static let currentVersion = 3
     var version = Self.currentVersion
     var savedAt = Date()
     var workspaces: [GoviWorkspaceRecord]
@@ -339,7 +384,7 @@ struct GoviKeyChord: Codable, Hashable {
 
 enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
     case newWorkspace, newWindow, closeTerminal, splitRight, splitDown, zoom, left, right, up, down, palette
-    case find, search, settings, focusMode, sidebar, attention, nextAttention, templates, remoteHosts, browser
+    case find, search, settings, focusMode, sidebar, attention, nextAttention, templates, remoteHosts, browser, editor, quickLook
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -364,6 +409,8 @@ enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
         case .templates: "Project templates"
         case .remoteHosts: "Remote hosts"
         case .browser: "Open browser pane"
+        case .editor: "Open editor pane"
+        case .quickLook: "Quick Look links"
         }
     }
     var defaultChord: GoviKeyChord {
@@ -390,6 +437,8 @@ enum GoviShortcutAction: String, CaseIterable, Identifiable, Codable {
             case .templates: ("t", 10)
             case .remoteHosts: ("r", 12)
             case .browser: ("b", 12)
+            case .editor: ("e", 12)
+            case .quickLook: ("y", 8)
             }
         return .init(key: pair.0, modifiers: pair.1)
     }

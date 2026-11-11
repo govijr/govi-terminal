@@ -20,6 +20,27 @@ if [[ ! -d .build/zig-cache/p/zg-0.13.4-AAAAAGiZ7QLz4pvECFa_wG4O4TP4FLABHHbemH2K
   "$GOVI_ZIG" fetch --global-cache-dir .build/zig-cache \
     https://codeberg.org/atman/zg/archive/4a002763419a34d61dcbb1f415821b83b9bf8ddc.tar.gz
 fi
+# Monaco powers the editor pane. The pinned release is fetched once, checked
+# against the npm registry's integrity hash, and only its minified build kept.
+monaco_version=0.52.2
+monaco_sri=sha512-GEQWEZmfkOGLdd3XK8ryrfWz3AIP8YymVXiPHEdewrUq7mh0qrKrfHLNCXcbB6sTnMLnOZ3ztSiKcciFUkIJwQ==
+monaco_dir=.build/monaco/$monaco_version
+if [[ ! -f $monaco_dir/vs/loader.js ]]; then
+  mkdir -p .build/monaco
+  [[ -f .build/monaco/monaco.tgz ]] ||
+    curl -fsSL -o .build/monaco/monaco.tgz "https://registry.npmjs.org/monaco-editor/-/monaco-editor-$monaco_version.tgz"
+  if [[ "sha512-$(openssl dgst -sha512 -binary .build/monaco/monaco.tgz | base64)" != "$monaco_sri" ]]; then
+    rm -f .build/monaco/monaco.tgz
+    print -u2 "The Monaco download doesn't match its published checksum."
+    exit 1
+  fi
+  rm -rf "$monaco_dir" "$monaco_dir.tmp" && mkdir -p "$monaco_dir.tmp"
+  tar -xzf .build/monaco/monaco.tgz -C "$monaco_dir.tmp" package/min/vs package/LICENSE
+  mkdir -p "$monaco_dir"
+  mv "$monaco_dir.tmp/package/min/vs" "$monaco_dir/vs"
+  mv "$monaco_dir.tmp/package/LICENSE" "$monaco_dir/LICENSE"
+  rm -rf "$monaco_dir.tmp" .build/monaco/monaco.tgz
+fi
 "$GOVI_ZIG" build -Doptimize=ReleaseFast -Dxcframework-target=native \
   -Demit-themes=true --global-cache-dir .build/zig-cache "$@"
 if [[ -d dist/Govi.app ]]; then
@@ -33,6 +54,8 @@ rm -rf dist/Govi.app/Contents/Resources/Govi
 ditto govi/Govi dist/Govi.app/Contents/Resources/Govi
 mkdir -p dist/Govi.app/Contents/Resources/Govi/Licenses
 cp LICENSE dist/Govi.app/Contents/Resources/Govi/Licenses/Ghostty-LICENSE.txt
+ditto "$monaco_dir/vs" dist/Govi.app/Contents/Resources/Govi/editor/vs
+cp "$monaco_dir/LICENSE" dist/Govi.app/Contents/Resources/Govi/Licenses/Monaco-LICENSE.txt
 cp README.md dist/Govi.app/Contents/Resources/Govi/README.md
 cp govi/SCOPE.md dist/Govi.app/Contents/Resources/Govi/SCOPE.md
 # The upstream build retains its internal executable name for compatibility

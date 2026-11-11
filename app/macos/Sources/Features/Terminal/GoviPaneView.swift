@@ -67,6 +67,7 @@ class GoviPaneView: NSView, Identifiable, SplitTreeLeaf {
         switch kind ?? Ghostty.SurfaceView.kindName {
         case Ghostty.SurfaceView.kindName: pane = try Ghostty.SurfaceView(from: decoder)
         case GoviWebPaneView.kindName: pane = try GoviWebPaneView(from: decoder)
+        case GoviEditorPaneView.kindName: pane = try GoviEditorPaneView(from: decoder)
         default:
             throw DecodingError.dataCorrupted(
                 .init(codingPath: decoder.codingPath, debugDescription: "Unknown pane kind \(kind ?? "")"))
@@ -157,19 +158,29 @@ extension BaseTerminalController {
 
     /// Open a browser pane beside the focused pane, or as the only pane.
     @discardableResult
-    func openWebPane(_ address: String? = nil, direction: SplitTree<GoviPaneView>.NewDirection = .right) -> GoviWebPaneView? {
+    func openWebPane(
+        _ address: String? = nil, beside: GoviPaneView? = nil, direction: SplitTree<GoviPaneView>.NewDirection = .right
+    ) -> GoviWebPaneView? {
         let pane = GoviWebPaneView()
         if let address { pane.load(address) }
-        let anchor = focusedPane ?? surfaceTree.root?.leftmostLeaf()
+        return insertPane(pane, beside: beside, direction: direction, undoAction: "Open Browser") ? pane : nil
+    }
+
+    /// Adds `pane` beside `anchor` (or the focused pane) and focuses it.
+    func insertPane(
+        _ pane: GoviPaneView, beside anchor: GoviPaneView?, direction: SplitTree<GoviPaneView>.NewDirection = .right,
+        undoAction: String
+    ) -> Bool {
+        let anchor = anchor.flatMap { surfaceTree.contains($0) ? $0 : nil } ?? focusedPane ?? surfaceTree.root?.leftmostLeaf()
         let tree: SplitTree<GoviPaneView>
         do {
             tree = try anchor.map { try surfaceTree.insert(view: pane, at: $0, direction: direction) } ?? .init(view: pane)
         } catch {
-            Ghostty.logger.warning("failed to open browser pane: \(error)")
-            return nil
+            Ghostty.logger.warning("failed to open \(pane.paneKind) pane: \(error)")
+            return false
         }
-        replaceSurfaceTree(tree, moveFocusTo: pane, moveFocusFrom: focusedPane, undoAction: "Open Browser")
-        return pane
+        replaceSurfaceTree(tree, moveFocusTo: pane, moveFocusFrom: focusedPane, undoAction: undoAction)
+        return true
     }
 }
 
@@ -182,4 +193,29 @@ extension SplitTree where ViewType == GoviPaneView {
 
 extension SplitTree.Node where ViewType == GoviPaneView {
     var surfaces: [Ghostty.SurfaceView] { leaves().compactMap { $0 as? Ghostty.SurfaceView } }
+}
+
+extension GoviLinkRouter {
+    /// Opens a clicked link inside Govi when that's the better home for it.
+    /// Returns false to let the caller open it with macOS.
+    static func open(_ url: URL, from surface: Ghostty.SurfaceView) -> Bool {
+        guard isLocalWeb(url), let controller = surface.window?.windowController as? BaseTerminalController else { return false }
+        return controller.showWebPane(browsable(url), beside: surface) != nil
+    }
+}
+
+extension BaseTerminalController {
+    /// Shows `url` in this window: reuses a browser pane already on the same
+    /// origin, otherwise opens one beside `anchor`.
+    @discardableResult
+    func showWebPane(_ url: URL, beside anchor: GoviPaneView? = nil) -> GoviWebPaneView? {
+        if let existing = surfaceTree.compactMap({ $0 as? GoviWebPaneView })
+            .first(where: { $0.url.map(GoviLinkRouter.origin) == GoviLinkRouter.origin(url) }) {
+            existing.load(url.absoluteString)
+            if surfaceTree.zoomed != nil { surfaceTree = .init(root: surfaceTree.root, zoomed: nil) }
+            DispatchQueue.main.async { Ghostty.moveFocus(to: existing) }
+            return existing
+        }
+        return openWebPane(url.absoluteString, beside: anchor)
+    }
 }

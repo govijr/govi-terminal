@@ -314,6 +314,12 @@ struct GoviUIPalette {
         let hash = key.unicodeScalars.reduce(UInt32(5381)) { ($0 &* 33) &+ $1.value }
         return readable(toneSeeds[Int(hash % UInt32(toneSeeds.count))])
     }
+    /// The theme's nth ANSI hue (green, yellow, blue, magenta, cyan, red), made readable.
+    func hue(_ index: Int) -> Color {
+        toneSeeds.indices.contains(index) ? readable(toneSeeds[index]) : accent
+    }
+    /// Any colour (a language's, say) nudged until it reads on the chrome surface.
+    func tint(_ seed: UInt32) -> Color { readable(seed) }
     var paper: Color { GoviInk.color(values.surface) }
     var canvas: Color { GoviInk.color(values.canvas) }
     var sidebar: Color { paper }
@@ -528,6 +534,8 @@ struct GoviSettingsView: View {
                 settingsTab("Terminal", icon: "terminal")
                 settingsTab("Suggestions", icon: "text.cursor")
                 settingsTab("Agents", icon: "bell.badge")
+                settingsTab("Browser", icon: "globe")
+                settingsTab("Editor", icon: "chevron.left.forwardslash.chevron.right")
                 settingsTab("Connections", icon: "link")
                 settingsTab("Shortcuts", icon: "command")
                 Spacer()
@@ -556,6 +564,10 @@ struct GoviSettingsView: View {
                     GoviInlineSettingsView()
                 } else if section == "Agents" {
                     GoviActivitySettingsView()
+                } else if section == "Browser" {
+                    GoviBrowserSettingsView()
+                } else if section == "Editor" {
+                    GoviEditorSettingsView()
                 } else if section == "Connections" {
                     GoviIntegrationSettingsView()
                 } else {
@@ -790,7 +802,7 @@ struct GoviSidebarGlass: ViewModifier {
                 .background(
                     LinearGradient(colors: [.white.opacity(0.07), .white.opacity(0.01)], startPoint: .top, endPoint: .bottom), in: shape
                 )
-                .glassEffect(.clear.tint(ui.sidebar.opacity(0.14)), in: shape)
+                .glassEffect(.clear.tint(ui.sidebar.opacity(0.22)), in: shape)
                 .overlay(rim)
                 .clipShape(shape).contentShape(shape)
                 .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
