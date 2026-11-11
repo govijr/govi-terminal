@@ -58,7 +58,7 @@ The build wrapper uses `zig build` and produces a locally signed `dist/Govi.app`
 
 Run `./govi/clean.sh` to clear intermediates while keeping downloaded dependencies and the compiler, or `./govi/clean.sh --deep` to clear those too. The source and `dist/Govi.app` are always kept. Artifacts used by a running process are skipped. A later build restores the generated files it needs.
 
-Regression checks are available through `./govi/test-workflows.sh`, `./govi/test-layout.sh`, `python3 govi/test-recovery.py`, `python3 govi/test-hooks.py`, `python3 govi/test-agent-usage.py`, and `python3 govi/test-palette.py`. The recovery regression needs an installed `hc` and uses disposable sessions only. Verification and remaining limits are recorded in `govi/VALIDATION.md`.
+Run `./govi/test.sh` for the unit tests CI runs on every pull request, and `./govi/format.sh` to format Govi's Swift sources (`--check` only reports). See [CONTRIBUTING.md](../CONTRIBUTING.md). Individual regression checks are available through `./govi/test-workflows.sh`, `./govi/test-layout.sh`, `python3 govi/test-recovery.py`, `python3 govi/test-hooks.py`, `python3 govi/test-agent-usage.py`, and `python3 govi/test-palette.py`. The recovery regression needs an installed `hc` and uses disposable sessions only. Verification and remaining limits are recorded in `govi/VALIDATION.md`.
 
 ## Source map
 

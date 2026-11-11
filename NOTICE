@@ -1,0 +1,34 @@
+Govi
+Copyright 2026 The Govi Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes software developed by others, which keeps its own
+license. Those licenses apply to the files they cover:
+
+- Ghostty (https://github.com/ghostty-org/ghostty), tag v1.2.3.
+  Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors.
+  MIT License: app/LICENSE.
+  Govi is built on Ghostty's terminal engine. Code that came from Ghostty
+  remains available under the MIT License; Govi's changes and additions are
+  licensed under the Apache License, Version 2.0.
+
+- Monaco Editor, MIT License. Downloaded at build time; its license is
+  bundled with the app.
+
+- Material Icon Theme, MIT License:
+  app/govi/Govi/Licenses/MaterialIconTheme-LICENSE.txt
+
+- CodeNotch, MIT License: app/govi/Govi/Licenses/CodeNotch-LICENSE.txt
+
+- Pi, MIT License: app/govi/Govi/Licenses/Pi-LICENSE.txt
+
+- iTerm2 Color Schemes, MIT License:
+  app/govi/Govi/Licenses/iTerm2-Color-Schemes-LICENSE.txt
+
+- Geist and JetBrains Mono fonts, SIL Open Font License 1.1:
+  app/govi/Govi/Licenses/Geist-OFL.txt
+  app/govi/Govi/Licenses/JetBrainsMono-OFL.txt
+
+Third-party code vendored under app/vendor and app/pkg keeps the license
+included in its own directory.
