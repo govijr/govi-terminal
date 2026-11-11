@@ -581,8 +581,10 @@ struct GoviWorkbench<Content: View>: View {
                                 if !$0 { filter = "" }
                             }))
                 } label: {
-                    GoviSymbol(symbol: "line.3.horizontal.decrease").frame(width: GoviChromeMetrics.button, height: GoviChromeMetrics.button)
-                        .modifier(GoviHoverHighlight(on: filterVisible || grouping != .project))
+                    GoviSymbol(symbol: "line.3.horizontal.decrease").frame(
+                        width: GoviChromeMetrics.button, height: GoviChromeMetrics.button
+                    )
+                    .modifier(GoviHoverHighlight(on: filterVisible || grouping != .project))
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help("Group and filter the sidebar").accessibilityLabel("Group and filter the sidebar")
@@ -702,7 +704,8 @@ struct GoviWorkbench<Content: View>: View {
     private func visibleEditorPanes(_ window: NSWindow) -> [GoviEditorPaneView] {
         let panes = (window.windowController as? TerminalController)?.surfaceTree.compactMap { $0 as? GoviEditorPaneView } ?? []
         return panes.filter {
-            filter.isEmpty || $0.displayPath.localizedCaseInsensitiveContains(filter) || $0.root.path.localizedCaseInsensitiveContains(filter)
+            filter.isEmpty || $0.displayPath.localizedCaseInsensitiveContains(filter)
+                || $0.root.path.localizedCaseInsensitiveContains(filter)
         }
     }
     private func directoryName(_ path: String) -> String {

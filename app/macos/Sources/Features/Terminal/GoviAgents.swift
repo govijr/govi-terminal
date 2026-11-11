@@ -258,7 +258,10 @@ struct GoviAgentMenu: View {
                 dismiss()
                 TerminalController.preferredParent?.openWebPane()
             }
-            GoviMenuRow(title: "Editor", trailing: shortcuts.chord(.editor).display, icon: { Image(systemName: "chevron.left.forwardslash.chevron.right") }) {
+            GoviMenuRow(
+                title: "Editor", trailing: shortcuts.chord(.editor).display,
+                icon: { Image(systemName: "chevron.left.forwardslash.chevron.right") }
+            ) {
                 dismiss()
                 TerminalController.preferredParent?.openEditorPane()
             }

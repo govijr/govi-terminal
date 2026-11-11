@@ -31,7 +31,8 @@ final class GoviControlServer {
         var folder = GoviDataPaths.supportDirectory
         if folder.appendingPathComponent("control.sock").path.utf8.count >= limit {
             // Long home folders overflow sun_path; the per-user temporary folder is short.
-            folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("govi-\(Bundle.main.bundleIdentifier ?? "app")".prefix(40).description)
+            folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(
+                "govi-\(Bundle.main.bundleIdentifier ?? "app")".prefix(40).description)
         }
         let path = folder.appendingPathComponent("control.sock").path
         guard path.utf8.count < limit else { return nil }
@@ -67,7 +68,8 @@ final class GoviControlServer {
             while true {
                 let peer = Darwin.accept(descriptor, nil, nil)
                 if peer < 0 { return }
-                var uid: uid_t = 0, gid: gid_t = 0
+                var uid: uid_t = 0
+                var gid: gid_t = 0
                 guard getpeereid(peer, &uid, &gid) == 0, uid == geteuid() else {
                     close(peer)
                     continue
@@ -194,7 +196,9 @@ enum GoviControl {
                 "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
             ]
         case "panes.list":
-            return TerminalController.all.flatMap { controller in controller.surfaceTree.map { describe($0, in: controller, caller: caller) } }
+            return TerminalController.all.flatMap { controller in
+                controller.surfaceTree.map { describe($0, in: controller, caller: caller) }
+            }
         case "pane.focus":
             let (controller, pane) = try find(params["pane"], caller: caller)
             focus(pane, in: controller)
@@ -332,7 +336,9 @@ enum GoviControl {
 
     static func terminal(_ spec: Any?, caller: UUID?) throws -> Ghostty.SurfaceView {
         let (_, pane) = try find(spec, caller: caller)
-        guard let surface = pane as? Ghostty.SurfaceView else { throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a browser, not a terminal.") }
+        guard let surface = pane as? Ghostty.SurfaceView else {
+            throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a browser, not a terminal.")
+        }
         return surface
     }
 
@@ -341,7 +347,9 @@ enum GoviControl {
     static func browser(_ spec: Any?, caller: UUID?) throws -> GoviWebPaneView {
         if spec != nil {
             let (_, pane) = try find(spec, caller: caller)
-            guard let web = pane as? GoviWebPaneView else { throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a terminal, not a browser.") }
+            guard let web = pane as? GoviWebPaneView else {
+                throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a terminal, not a browser.")
+            }
             return web
         }
         let controllers = TerminalController.all

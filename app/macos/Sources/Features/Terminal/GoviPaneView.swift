@@ -210,7 +210,8 @@ extension BaseTerminalController {
     @discardableResult
     func showWebPane(_ url: URL, beside anchor: GoviPaneView? = nil) -> GoviWebPaneView? {
         if let existing = surfaceTree.compactMap({ $0 as? GoviWebPaneView })
-            .first(where: { $0.url.map(GoviLinkRouter.origin) == GoviLinkRouter.origin(url) }) {
+            .first(where: { $0.url.map(GoviLinkRouter.origin) == GoviLinkRouter.origin(url) })
+        {
             existing.load(url.absoluteString)
             if surfaceTree.zoomed != nil { surfaceTree = .init(root: surfaceTree.root, zoomed: nil) }
             DispatchQueue.main.async { Ghostty.moveFocus(to: existing) }

@@ -62,25 +62,27 @@ struct GoviSidebarTerminal: View {
                 .onDrag { GoviPaneCoordinator.dragProvider(for: surface) }
                 .padding(.trailing, hovering ? 44 : 0)
         }.overlay(alignment: .trailing) {
-          HStack(spacing: 0) {
-            Menu {
-                Button("Split right") { perform("new_split:right") }
-                Button("Split below") { perform("new_split:down") }
-                Button("Maximize / restore pane") { perform("toggle_split_zoom") }
-                Button("Rename terminal…") { surface.promptTitle() }
-                if let path = surface.pwd {
-                    Button("Show in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path) }
+            HStack(spacing: 0) {
+                Menu {
+                    Button("Split right") { perform("new_split:right") }
+                    Button("Split below") { perform("new_split:down") }
+                    Button("Maximize / restore pane") { perform("toggle_split_zoom") }
+                    Button("Rename terminal…") { surface.promptTitle() }
+                    if let path = surface.pwd {
+                        Button("Show in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path) }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 11)).frame(width: 22, height: 22)
                 }
-            } label: {
-                Image(systemName: "ellipsis").font(.system(size: 11)).frame(width: 22, height: 22)
-            }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Session actions").accessibilityLabel("Session actions")
-            Button {
-                perform("close_surface")
-            } label: {
-                Image(systemName: "xmark").font(.system(size: 9.5, weight: .medium)).frame(width: 22, height: 22).contentShape(Rectangle())
-            }.buttonStyle(.plain).help("Close terminal").accessibilityLabel("Close terminal")
-          }.opacity(hovering ? 1 : 0).allowsHitTesting(hovering)
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Session actions").accessibilityLabel(
+                    "Session actions")
+                Button {
+                    perform("close_surface")
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 9.5, weight: .medium)).frame(width: 22, height: 22).contentShape(
+                        Rectangle())
+                }.buttonStyle(.plain).help("Close terminal").accessibilityLabel("Close terminal")
+            }.opacity(hovering ? 1 : 0).allowsHitTesting(hovering)
         }.modifier(GoviSidebarPaneRowStyle(active: active, hovering: hovering))
             .onHover { hovering = $0 }
             .contextMenu {

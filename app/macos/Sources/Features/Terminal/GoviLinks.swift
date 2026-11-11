@@ -58,12 +58,16 @@ extension GoviLinkRouter {
     static func fileLocation(_ raw: String, relativeTo directory: String?) -> GoviFileLocation? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.lowercased().hasPrefix("file:") {
-            guard let url = URL(string: text), url.isFileURL, url.host == nil || url.host == "" || url.host == "localhost" else { return nil }
+            guard let url = URL(string: text), url.isFileURL, url.host == nil || url.host == "" || url.host == "localhost" else {
+                return nil
+            }
             text = url.path
         }
         guard !text.isEmpty, !text.contains("\0"), text.utf8.count < 4096 else { return nil }
         let range = NSRange(text.startIndex..., in: text)
-        guard let match = suffixPattern.firstMatch(in: text, range: range), let pathRange = Range(match.range(at: 1), in: text) else { return nil }
+        guard let match = suffixPattern.firstMatch(in: text, range: range), let pathRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
         let number = { (index: Int) in Range(match.range(at: index), in: text).flatMap { Int(text[$0]) } }
         var path = String(text[pathRange])
         if !path.hasPrefix("/") {
@@ -160,7 +164,9 @@ extension GoviLinkRouter {
     /// settles the answer when wide characters shift the columns.
     static func token(in line: String, atColumn column: Int, containing word: String) -> String? {
         var tokens: [(text: String, range: Range<Int>)] = []
-        var current = "", start = 0, count = 0
+        var current = ""
+        var start = 0
+        var count = 0
         for character in line {
             if character.isWhitespace || character == "\0" {
                 if !current.isEmpty { tokens.append((current, start..<count)) }

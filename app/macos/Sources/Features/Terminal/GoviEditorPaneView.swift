@@ -592,8 +592,12 @@ struct GoviEditorPane: View {
                 if let problem = pane.problem {
                     HStack(spacing: 8) {
                         Text(problem).font(GoviInk.font(11.5)).foregroundStyle(ui.ink).lineLimit(3)
-                        Button { pane.problem = nil } label: { Image(systemName: "xmark").font(.system(size: 10)) }
-                            .buttonStyle(.plain).accessibilityLabel("Dismiss")
+                        Button {
+                            pane.problem = nil
+                        } label: {
+                            Image(systemName: "xmark").font(.system(size: 10))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Dismiss")
                     }
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -632,7 +636,9 @@ private struct GoviEditorPaneBar: View {
                 if pane.isDirty {
                     Circle().fill(ui.accent).frame(width: 7, height: 7).accessibilityLabel("Unsaved changes")
                 }
-                if pane.isReadOnly { Image(systemName: "lock").font(.system(size: 10)).foregroundStyle(ui.muted).accessibilityLabel("Read-only") }
+                if pane.isReadOnly {
+                    Image(systemName: "lock").font(.system(size: 10)).foregroundStyle(ui.muted).accessibilityLabel("Read-only")
+                }
                 Spacer(minLength: 8)
                 if pane.file != nil {
                     Text("Ln \(pane.line), Col \(pane.column)").font(GoviInk.font(11)).monospacedDigit().foregroundStyle(ui.muted)
@@ -702,8 +708,12 @@ private struct GoviFileTree: View {
                 Text(tree.root.lastPathComponent).font(GoviInk.font(11).weight(.semibold)).foregroundStyle(ui.muted.opacity(0.7))
                     .lineLimit(1).help(tree.root.path)
                 Spacer()
-                Button { tree.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 10)) }
-                    .buttonStyle(.plain).foregroundStyle(ui.muted).help("Refresh").accessibilityLabel("Refresh files")
+                Button {
+                    tree.refresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 10))
+                }
+                .buttonStyle(.plain).foregroundStyle(ui.muted).help("Refresh").accessibilityLabel("Refresh files")
             }.padding(.horizontal, 12).frame(height: 26)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
@@ -955,8 +965,10 @@ struct GoviEditorSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Editor panes show a folder beside a code editor. Open one with \(GoviShortcuts.shared.chord(.editor).display) or from the + menu.")
-                .foregroundStyle(ui.muted).lineSpacing(4)
+            Text(
+                "Editor panes show a folder beside a code editor. Open one with \(GoviShortcuts.shared.chord(.editor).display) or from the + menu."
+            )
+            .foregroundStyle(ui.muted).lineSpacing(4)
             Toggle("Open file paths I Command-click in a terminal", isOn: $openPaths)
             Text("Paths such as ./src/app.ts:42 open at that line. Folders and files that aren't text still open with macOS.")
                 .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)

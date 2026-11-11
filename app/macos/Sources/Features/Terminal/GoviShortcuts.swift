@@ -36,7 +36,9 @@ import SwiftUI
         // An open Quick Look preview takes Escape, Command-W and the arrow keys first.
         if GoviQuickLook.shared.handleKey(event) { return true }
         // Hidden demo/debug shortcut, also available in local release builds.
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad]) == [.command, .control, .shift],
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad]) == [
+            .command, .control, .shift,
+        ],
             event.charactersIgnoringModifiers?.lowercased() == "g",
             let window = NSApp.keyWindow, window.attachedSheet == nil,
             window.windowController is TerminalController

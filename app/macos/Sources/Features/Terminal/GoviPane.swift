@@ -563,7 +563,9 @@ private struct GoviWebPaneBar: View {
             button("chevron.left", "Back") { pane.goBack() }.disabled(!pane.canGoBack)
             button("chevron.right", "Forward") { pane.goForward() }.disabled(!pane.canGoForward)
             button(pane.isLoading ? "xmark" : "arrow.clockwise", pane.isLoading ? "Stop loading" : "Reload") { pane.reload() }
-            Button { pane.togglePicker() } label: {
+            Button {
+                pane.togglePicker()
+            } label: {
                 Image(systemName: "cursorarrow.rays").font(.system(size: 12, weight: .regular))
                     .foregroundStyle(pane.isPicking ? ui.accent : ui.ink)
                     .frame(width: 24, height: 24).modifier(GoviHoverHighlight())
