@@ -85,7 +85,7 @@ export function LaunchSplash() {
 
     if (reduce) {
       setProgress(1);
-      setSettled(true);
+      timers.push(window.setTimeout(() => setSettled(true), 0));
       timers.push(window.setTimeout(finish, REDUCED_DONE_AT));
     } else {
       const start = performance.now();
