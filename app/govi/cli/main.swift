@@ -229,6 +229,17 @@ let usage = """
       govi browser console [--clear]               Recent console output and errors
       Browser commands take --pane P to pick a browser pane.
 
+    Mods (folders in Govi's Mods directory that add panes, commands and automations)
+      govi mod list                      Installed mods, and what each adds
+      govi mod new NAME                  Create a small working mod to edit
+      govi mod enable ID | disable ID    Turn a mod on (Govi asks first) or off
+      govi mod open MOD[/PANE] [--down] [--focus]   Open one of a mod's panes beside this pane
+      govi mod run MOD/COMMAND           Run one of a mod's commands
+      govi mod reload [ID]               Read mod.json files again; with ID, restart that mod
+      govi mod install OWNER/REPO|URL    Download a mod with git (it stays off until enabled)
+      govi mod link [FOLDER]             Add a folder you're developing in as a mod
+      govi mod dir                       Print the Mods directory
+
     Other
       govi mcp                           Serve these commands to an agent over MCP (stdio)
       govi hello                         Check the connection
@@ -322,6 +333,8 @@ func run(_ argv: [String]) throws -> Int32 {
     case "browser", "b":
         arguments.positional = Array(arguments.positional)
         return try browser(arguments, send: send, pageLine: pageLine, paneLine: paneLine)
+    case "mod", "mods":
+        return try mod(arguments, send: send, paneLine: paneLine)
     default:
         throw GoviFailure("Unknown command \(command). Run `govi help`.", code: 2)
     }
@@ -406,6 +419,89 @@ func browser(
         }
     default:
         throw GoviFailure("Unknown browser command \(action). Run `govi help`.", code: 2)
+    }
+}
+
+// MARK: - Mods
+
+func describeMod(_ value: Any) -> String {
+    guard let mod = value as? [String: Any] else { return json(value) }
+    let id = mod["id"] as? String ?? URL(fileURLWithPath: mod["folder"] as? String ?? "").lastPathComponent
+    var lines = [
+        "\(mod["enabled"] as? Bool == true ? "on " : "off")  \(id)  \(mod["name"] as? String ?? "") \(mod["version"] as? String ?? "")"
+    ]
+    for pane in mod["panes"] as? [[String: Any]] ?? [] {
+        lines.append(
+            "       pane     \(id)/\(pane["id"] as? String ?? "")  \(pane["title"] as? String ?? "") (\(pane["kind"] as? String ?? ""))")
+    }
+    for command in mod["commands"] as? [[String: Any]] ?? [] {
+        let shortcut = (command["shortcut"] as? String).map { "  [\($0)]" } ?? ""
+        lines.append("       command  \(id)/\(command["id"] as? String ?? "")  \(command["title"] as? String ?? "")\(shortcut)")
+    }
+    if let service = mod["service"] as? String { lines.append("       service  \(service)") }
+    if let problem = mod["problem"] as? String {
+        lines.append("       problem  " + problem.replacingOccurrences(of: "\n", with: "\n                "))
+    }
+    return lines.joined(separator: "\n")
+}
+
+func mod(
+    _ arguments: Arguments, send: (String, [String: Any], (Any) -> String) throws -> Int32, paneLine: @escaping (Any) -> String
+) throws -> Int32 {
+    var words = arguments.positional
+    let action = words.isEmpty ? "list" : words.removeFirst()
+    /// Splits `mod/item` into its two halves.
+    func pair(_ what: String) throws -> (String, String?) {
+        guard let text = words.first, !text.isEmpty else { throw GoviFailure("Say which \(what). Run `govi mod list`.", code: 2) }
+        let parts = text.split(separator: "/", maxSplits: 1).map(String.init)
+        return (parts[0], parts.count > 1 ? parts[1] : nil)
+    }
+    func listing(_ result: Any) -> String {
+        let info = result as? [String: Any] ?? [:]
+        let mods = info["mods"] as? [[String: Any]] ?? []
+        let folder = info["directory"] as? String ?? ""
+        if mods.isEmpty { return "No mods in \(folder).\nCreate one with `govi mod new NAME`." }
+        return (mods.map(describeMod) + ["", "Mods folder: \(folder)"]).joined(separator: "\n")
+    }
+
+    switch action {
+    case "list", "ls":
+        return try send("mods.list", [:], listing)
+    case "dir", "folder":
+        return try send("mods.list", [:]) { ($0 as? [String: Any])?["directory"] as? String ?? "" }
+    case "reload":
+        return try send("mods.reload", words.first.map { ["mod": $0] } ?? [:], listing)
+    case "new", "create":
+        guard !words.isEmpty else { throw GoviFailure("Give the mod a name, e.g. `govi mod new Android Emulator`.", code: 2) }
+        return try send("mods.new", ["name": words.joined(separator: " ")]) { result in
+            let info = result as? [String: Any] ?? [:]
+            let id = info["id"] as? String ?? ""
+            return "Created \(info["folder"] as? String ?? "").\nTurn it on with `govi mod enable \(id)`, then `govi mod open \(id)`."
+        }
+    case "enable", "disable":
+        guard let id = words.first else { throw GoviFailure("Say which mod, e.g. `govi mod \(action) my-mod`.", code: 2) }
+        return try send("mods.\(action)", ["mod": id], describeMod)
+    case "install", "add":
+        guard let source = words.first else { throw GoviFailure("Give a GitHub owner/repo or a git address.", code: 2) }
+        return try send("mods.install", ["source": source]) { result in
+            describeMod(result)
+                + "\nIt is off. Read what it runs, then `govi mod enable \((result as? [String: Any])?["id"] as? String ?? "ID")`."
+        }
+    case "link":
+        let path = URL(fileURLWithPath: words.first ?? ".", relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+            .standardizedFileURL.path
+        return try send("mods.link", ["path": path], describeMod)
+    case "open":
+        let (id, pane) = try pair("mod pane, e.g. `govi mod open my-mod/main`")
+        var params: [String: Any] = ["mod": id, "direction": direction(arguments), "focus": arguments.has("--focus")]
+        if let pane { params["modPane"] = pane }
+        return try send("mod.open", params, paneLine)
+    case "run":
+        let (id, command) = try pair("mod command, e.g. `govi mod run my-mod/hello`")
+        guard let command else { throw GoviFailure("Name the command as MOD/COMMAND. Run `govi mod list`.", code: 2) }
+        return try send("mod.run", ["mod": id, "command": command]) { _ in "" }
+    default:
+        throw GoviFailure("Unknown mod command \(action). Run `govi help`.", code: 2)
     }
 }
 
