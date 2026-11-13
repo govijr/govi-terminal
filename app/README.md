@@ -31,6 +31,7 @@ Open `dist/Govi.app`, or run:
 - **Keyboard shortcuts:** **Settings → Shortcuts** records new combinations for workspace, split, navigation, search and attention actions. Conflicts and common system/text-editing shortcuts are rejected. Changes apply to open terminals, menus and shortcut hints. Individual shortcuts or all shortcuts can be reset.
 - **Quiet appearance:** **Settings → Background → Use Quiet Preset** selects a solid Graphite background with the current font and spacing. Launch animation is off by default and can be enabled in **Settings → Appearance**.
 - **Demo recording:** press **⌘⇧⌃G** (Command–Shift–Control–G) to replay the opening wordmark animation in the active workspace, even when launch animation is disabled. Press again to restart it for another take. This hidden debug shortcut also works in local release builds.
+- **Mods:** add your own panes, palette commands, shortcuts and automations with a folder and a `mod.json`. Manage them in **Settings → Mods** or with `govi mod`. Mods are off until you turn them on and then run as you, unsandboxed. See the [mod author's guide](govi/MODS.md).
 - **Other tools:** `Cmd+K` opens the command palette; `Cmd+P` searches terminals without a permanent search bar; `Cmd+F` searches a copied snapshot of the focused terminal's output. Saved commands fill the prompt without sending Return.
 - **Inline suggestions:** in a new zsh terminal, start typing to see a dimmed completion at the cursor. Press **Tab** to accept the visible suggestion without running it. Return runs only the command currently entered. Suggestions come from saved commands, recent shell-history files, commands entered in Govi and common commands. When no suggestion is visible, Tab calls the shell's original completion widget. Moving into the middle of a command, selecting text, or using a continuation prompt hides the suggestion.
 
@@ -76,6 +77,7 @@ Run `./govi/test.sh` for the unit tests CI runs on every pull request, and `./go
 - `govi/Govi/`: bundled fonts, licenses, defaults, and icon.
 - `govi/UPSTREAM_README.md`: original Ghostty README.
 - `govi/SCOPE.md`: what this macOS-only fork keeps and removes.
+- `govi/MODS.md`: how to write a mod; `govi/examples/mods/` has a complete one.
 
 ## Credits
 

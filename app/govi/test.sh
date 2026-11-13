@@ -12,11 +12,12 @@ typeset -A tests=(
   layout       'zsh govi/test-layout.sh'
   remote       'zsh govi/test-remote.sh'
   integrations 'zsh govi/test-integrations.sh'
+  mods         'zsh govi/test-mods.sh'
   cli          'zsh govi/test-cli.sh'
   hooks        'python3 govi/test-hooks.py'
   agent-usage  'python3 govi/test-agent-usage.py'
 )
-order=(workflows layout remote integrations cli hooks agent-usage)
+order=(workflows layout remote integrations mods cli hooks agent-usage)
 selected=(${@:-$order})
 
 failed=()
