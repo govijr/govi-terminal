@@ -32,6 +32,9 @@ while True:
         "truncated": False, "elements": [{"ref": "e1", "tag": "button", "name": "Sign in"}]}}
     elif m == "browser.eval": res = {"ok": True, "result": {"result": {"n": 2}}}
     elif m == "browser.screenshot": res = {"ok": True, "result": {"base64": "iVBORw0KGgo=", "format": "png"}}
+    elif m == "mods.list": res = {"ok": True, "result": {"directory": "/tmp/Mods", "mods": [{"id": "android", "name": "Android",
+        "version": "0.1.0", "enabled": True, "folder": "/tmp/Mods/android", "panes": [{"id": "screen", "title": "Screen", "kind": "web"}],
+        "commands": [{"id": "restart", "title": "Restart", "shortcut": "cmd+shift+e"}]}]}}
     elif m == "pane.focus": res = {"ok": False, "error": "No pane has the ID zzzz. Run `govi panes`."}
     else: res = {"ok": True, "result": {"pane": "x"}}
     c.sendall((json.dumps(res) + "\n").encode()); c.close()
@@ -82,6 +85,17 @@ out=$($govi browser eval '1 + 1')
 check "eval prints JSON" '[[ $out == *"\"n\" : 2"* || $out == *"\"n\": 2"* ]]'
 (cd "$work" && $govi browser screenshot --out shot.png >/dev/null)
 check "screenshot writes PNG bytes" '[[ $(head -c 4 "$work/shot.png" | xxd -p) == 89504e47 ]]'
+
+$govi mod open android/screen --down >/dev/null
+check "mod open splits mod and pane" '[[ $(last) == *"\"method\": \"mod.open\""* && $(last) == *"\"mod\": \"android\""* && $(last) == *"\"modPane\": \"screen\""* && $(last) == *"\"direction\": \"down\""* ]]'
+$govi mod run android/restart >/dev/null
+check "mod run names the command" '[[ $(last) == *"\"method\": \"mod.run\""* && $(last) == *"\"command\": \"restart\""* ]]'
+$govi mod new Android Emulator >/dev/null
+check "mod new joins the name" '[[ $(last) == *"\"method\": \"mods.new\""* && $(last) == *"\"name\": \"Android Emulator\""* ]]'
+(cd "$work" && $govi mod link >/dev/null)
+check "mod link sends an absolute folder" '[[ $(last) == *"\"method\": \"mods.link\""* && $(last) == *"\"path\": \"/"* ]]'
+out=$($govi mod list)
+check "mod list shows mods and their parts" '[[ $out == *"on   android  Android 0.1.0"* && $out == *"pane     android/screen"* && $out == *"command  android/restart"* ]]'
 
 set +e
 err=$($govi focus zzzz 2>&1); code=$?

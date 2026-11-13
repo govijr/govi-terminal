@@ -1,0 +1,179 @@
+# Runs on every pull request and every push to main. Branch protection
+# requires the "CI result" job, which passes only when every other job
+# passed or was skipped because its files didn't change.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'app/**'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/**'
+              - '.github/workflows/ci.yml'
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+  app-tests:
+    name: App / Unit tests
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: xcodebuild -version && swift --version && python3 --version
+      - name: Run unit tests
+        run: ./govi/test.sh
+
+  app-format:
+    name: App / Swift format
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: macos-26
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check formatting
+        run: ./govi/format.sh --check
+
+  app-build:
+    name: App / Build
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: macos-26
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Zig compiler, Zig package cache and Monaco download are pinned and
+      # checksum-verified by the build scripts, so restoring them is safe.
+      - name: Restore dependency cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            app/.tools
+            app/.build/zig-cache/p
+            app/.build/monaco
+          key: deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('app/build.zig.zon', 'app/govi/bootstrap-zig.sh', 'app/govi/build.sh') }}
+          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build Govi.app
+        # Zig 0.14.1 links only against the macOS 26.0 SDK, so Zig uses
+        # Xcode 26.0.1 while the Swift app builds with the runner's default Xcode.
+        env:
+          GOVI_ZIG_DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+        run: |
+          xcrun --sdk macosx --show-sdk-version
+          DEVELOPER_DIR="$GOVI_ZIG_DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-version
+          ./govi/build.sh
+      - name: Check the app bundle
+        run: |
+          set -euo pipefail
+          app=dist/Govi.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = Govi
+          test -x "$app/Contents/MacOS/govi"
+          test -f "$app/Contents/Resources/Govi/Licenses/Ghostty-LICENSE.txt"
+          test -f "$app/Contents/Resources/Govi/editor/vs/loader.js"
+          codesign --verify --deep --strict "$app"
+          "$app/Contents/MacOS/govi" --help > /dev/null
+          echo "Bundle looks good."
+      - name: Palette test (needs the built themes)
+        run: python3 govi/test-palette.py
+
+  web:
+    name: Website
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
+
+  result:
+    name: CI result
+    if: always()
+    needs: [changes, workflow-lint, app-tests, app-format, app-build, web]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != success ] && [ "$result" != skipped ]; then
+              echo "::error::A required job finished with '$result'."
+              exit 1
+            fi
+          done

@@ -4,15 +4,21 @@ cd "${0:A:h}/.."
 GOVI_ROOT="$PWD"
 GOVI_ZIG="$(./govi/bootstrap-zig.sh)"
 mkdir -p .build dist
-# Zig 0.14.1 cannot link against SDKs newer than macOS 26 (it reports undefined
-# libSystem symbols such as _abort). When the selected Xcode is newer, Zig uses
-# the Command Line Tools SDK and a shim keeps xcodebuild on the selected Xcode.
-if [[ -z "${DEVELOPER_DIR:-}" && -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk ]] &&
+# Zig 0.14.1 can only link against the macOS 26.0 SDK; newer SDKs make it
+# report undefined libSystem symbols such as _abort and _waitpid. Zig then uses
+# an older developer directory and a shim keeps xcodebuild on the selected Xcode.
+# GOVI_ZIG_DEVELOPER_DIR picks that directory (CI points it at Xcode 26.0.1);
+# otherwise the Command Line Tools 26 SDK is used when the selected one is newer.
+zig_developer_dir=${GOVI_ZIG_DEVELOPER_DIR:-}
+if [[ -z $zig_developer_dir && -z "${DEVELOPER_DIR:-}" && -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk ]] &&
    (( ${$(xcrun --sdk macosx --show-sdk-version 2>/dev/null)%%.*:-0} > 26 )); then
+  zig_developer_dir=/Library/Developer/CommandLineTools
+fi
+if [[ -n $zig_developer_dir ]]; then
   mkdir -p .build/xcode-shim
   print -r -- $'#!/bin/sh\nunset DEVELOPER_DIR SDKROOT\nexec /usr/bin/xcodebuild "$@"' > .build/xcode-shim/xcodebuild
   chmod +x .build/xcode-shim/xcodebuild
-  export PATH="$PWD/.build/xcode-shim:$PATH" DEVELOPER_DIR=/Library/Developer/CommandLineTools
+  export PATH="$PWD/.build/xcode-shim:$PATH" DEVELOPER_DIR=$zig_developer_dir
 fi
 # Populate the same hash from the official archive; Zig 0.14's git transport
 # intermittently fails against Codeberg. No dependency sources are modified.

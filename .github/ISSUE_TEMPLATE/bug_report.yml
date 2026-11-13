@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in Govi doesn't work as expected.
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting a bug. Please search existing issues first.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a new workspace
+        2. Split right with Cmd+D
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: e.g. 26.1
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Govi commit
+      description: Run `git rev-parse --short HEAD` in your checkout.
+      placeholder: e.g. 1ed25fa
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Terminal and panes
+        - Sidebar and workspaces
+        - Agents and notifications
+        - Session recovery
+        - Inline suggestions
+        - GitHub and Linear tasks
+        - Remote hosts
+        - Browser or editor pane
+        - govi CLI or MCP server
+        - Settings and appearance
+        - Building from source
+        - Website
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove any tokens, keys or private paths first.
+      render: text

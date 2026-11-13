@@ -484,6 +484,8 @@ struct GoviSettingsView: View {
     var ghostty: Ghostty.App
     var close: (() -> Void)? = nil
     var initialSection = "Appearance"
+    /// Set just before opening Settings to land on a particular section.
+    @MainActor static var pendingSection: String?
     /// Inline mode renders inside the terminal window: no own surfaces or
     /// dividers, so the window backdrop runs straight through it.
     var inline = false
@@ -513,14 +515,22 @@ struct GoviSettingsView: View {
             layout
                 .font(GoviInk.font(12)).foregroundStyle(ui.ink)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onAppear { section = initialSection }
+                .onAppear {
+                    section = Self.pendingSection ?? initialSection
+                    Self.pendingSection = nil
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .goviShowModSettings)) { _ in section = "Mods" }
                 .onExitCommand { close?() }
         } else {
             layout
                 .font(GoviInk.font(12)).foregroundStyle(ui.ink).background(ui.paper)
                 .frame(minWidth: 820, idealWidth: 900, minHeight: 600, idealHeight: 680)
                 .modifier(GoviChromeAppearance())
-                .onAppear { section = initialSection }
+                .onAppear {
+                    section = Self.pendingSection ?? initialSection
+                    Self.pendingSection = nil
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .goviShowModSettings)) { _ in section = "Mods" }
                 .onExitCommand { close?() }
         }
     }
@@ -537,6 +547,7 @@ struct GoviSettingsView: View {
                 settingsTab("Browser", icon: "globe")
                 settingsTab("Editor", icon: "chevron.left.forwardslash.chevron.right")
                 settingsTab("Connections", icon: "link")
+                settingsTab("Mods", icon: "puzzlepiece.extension")
                 settingsTab("Shortcuts", icon: "command")
                 Spacer()
                 Text("Govi").font(GoviInk.font(11).weight(.medium)).foregroundStyle(ui.muted)
@@ -570,6 +581,8 @@ struct GoviSettingsView: View {
                     GoviEditorSettingsView()
                 } else if section == "Connections" {
                     GoviIntegrationSettingsView()
+                } else if section == "Mods" {
+                    GoviModsSettingsView()
                 } else {
                     GoviShortcutsSettingsView(ghostty: ghostty)
                 }

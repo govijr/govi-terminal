@@ -304,7 +304,8 @@ extension Ghostty.SurfaceView {
         guard let surface else { return nil }
         var word = ghostty_text_s()
         guard ghostty_surface_quicklook_word(surface, &word) else { return nil }
-        let start = Int(word.offset_start), visible = word.tl_px_x >= 0
+        let start = Int(word.offset_start)
+        let visible = word.tl_px_x >= 0
         let wordText = word.text.map { String(cString: $0) } ?? ""
         ghostty_surface_free_text(surface, &word)
         let columns = Int(ghostty_surface_size(surface).columns)

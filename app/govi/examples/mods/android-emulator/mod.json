@@ -1,0 +1,14 @@
+{
+  "id": "android-emulator",
+  "name": "Android Emulator",
+  "version": "0.1.0",
+  "description": "Mirror and control an Android emulator or device in a pane, with logcat beside it. Needs the Android SDK's adb.",
+  "panes": [
+    { "id": "screen", "title": "Android", "icon": "iphone", "page": "ui/index.html" },
+    { "id": "logcat", "title": "Logcat", "command": ["./logcat.sh"] }
+  ],
+  "commands": [
+    { "id": "open", "title": "Open Android Screen", "description": "Show a running emulator or device beside this pane.", "shortcut": "cmd+alt+e", "pane": "screen" },
+    { "id": "logcat", "title": "Open Logcat", "description": "Follow the device log in a terminal pane.", "pane": "logcat" }
+  ]
+}

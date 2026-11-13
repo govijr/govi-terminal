@@ -321,7 +321,8 @@ extension GoviWebPaneView {
         do {
             return try await run("const __value = await (\n\(source)\n);\nreturn __goviValue(__value);", arguments: [:], prelude: true)
         } catch let error as GoviControlError where error.message.contains("SyntaxError") {
-            return try await run("const __value = await (async () => {\n\(source)\n})();\nreturn __goviValue(__value);", arguments: [:], prelude: true)
+            return try await run(
+                "const __value = await (async () => {\n\(source)\n})();\nreturn __goviValue(__value);", arguments: [:], prelude: true)
         }
     }
 
@@ -331,7 +332,9 @@ extension GoviWebPaneView {
         }
         let image: NSImage = try await withCheckedThrowingContinuation { continuation in
             webView.takeSnapshot(with: nil) { image, error in
-                if let image { continuation.resume(returning: image) } else {
+                if let image {
+                    continuation.resume(returning: image)
+                } else {
                     continuation.resume(throwing: GoviControlError(error?.localizedDescription ?? "WebKit didn't return a picture."))
                 }
             }
@@ -641,14 +644,20 @@ struct GoviBrowserSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Browser panes sit next to your terminals. Open one with \(GoviShortcuts.shared.chord(.browser).display), from the + menu, or by Command-clicking a localhost link.")
-                .foregroundStyle(ui.muted).lineSpacing(4)
+            Text(
+                "Browser panes sit next to your terminals. Open one with \(GoviShortcuts.shared.chord(.browser).display), from the + menu, or by Command-clicking a localhost link."
+            )
+            .foregroundStyle(ui.muted).lineSpacing(4)
             Toggle("Offer local servers that terminals print", isOn: $detect)
-            Text("When a terminal shows an address such as http://localhost:3000, its title bar offers to open it. Govi checks the visible text on this Mac every couple of seconds; nothing is sent anywhere.")
-                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
+            Text(
+                "When a terminal shows an address such as http://localhost:3000, its title bar offers to open it. Govi checks the visible text on this Mac every couple of seconds; nothing is sent anywhere."
+            )
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
             Toggle("Keep cookies and site data between launches", isOn: $keepData)
-            Text("Off: every browser pane starts signed out and forgets everything when it closes. On: browser panes share one store that only Govi uses, so sign-ins persist. Applies to browser panes opened after the change.")
-                .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
+            Text(
+                "Off: every browser pane starts signed out and forgets everything when it closes. On: browser panes share one store that only Govi uses, so sign-ins persist. Applies to browser panes opened after the change."
+            )
+            .font(GoviInk.font(11)).foregroundStyle(ui.muted).lineSpacing(4)
             HStack {
                 Button("Clear Saved Site Data") {
                     let store = WKWebsiteDataStore.default()

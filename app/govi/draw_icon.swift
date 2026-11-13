@@ -6,7 +6,8 @@ import ImageIO
 let sourceURL = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().appendingPathComponent("app-icon.png")
 guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
-      let artwork = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+    let artwork = CGImageSourceCreateImageAtIndex(source, 0, nil)
+else {
     fatalError("Unable to load \(sourceURL.path)")
 }
 let output = CommandLine.arguments[1]

@@ -1,0 +1,132 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Android</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; font: 12px -apple-system, sans-serif; overflow: hidden; }
+  header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  select, button, input { font: inherit; color: inherit; background: transparent; border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; }
+  button:hover { border-color: var(--accent); }
+  input { flex: 1; min-width: 80px; }
+  main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+  img { max-width: 100%; max-height: 100%; border-radius: 10px; cursor: crosshair; user-select: none; -webkit-user-drag: none; }
+  #note { opacity: 0.7; text-align: center; line-height: 1.6; max-width: 420px; white-space: pre-wrap; }
+</style>
+<header>
+  <select id="device" title="Device"></select>
+  <select id="avd" title="Emulators you can start"></select>
+  <button id="start" title="Start the chosen emulator without its own window">Start</button>
+  <button data-key="4" title="Back">◁</button>
+  <button data-key="3" title="Home">○</button>
+  <button data-key="187" title="Recent apps">□</button>
+  <button data-key="26" title="Power">⏻</button>
+  <input id="text" placeholder="Type text, press Return to send">
+</header>
+<main><img id="screen" hidden alt="Android screen"><div id="note">Looking for adb…</div></main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const screen = $("screen"), note = $("note"), device = $("device"), avd = $("avd");
+  let adb = null, emulator = null, busy = false, down = null;
+
+  const paint = (theme) => {
+    document.body.style.background = theme.background;
+    document.body.style.color = theme.foreground;
+    document.body.style.setProperty("--border", theme.border);
+    document.body.style.setProperty("--accent", theme.accent);
+  };
+  paint(govi.theme);
+  govi.on("theme", paint);
+
+  // Programs get their arguments as a list, so nothing here needs shell quoting.
+  const run = (argv, options) => govi.exec(argv, options);
+  // sh(script, [args], options): inside the script the arguments are $1, $2, …
+  const sh = (script, args = [], options) => run(["sh", "-c", script, "sh", ...args], options);
+  const serial = () => device.value;
+  const input = (...args) => run([adb, "-s", serial(), "shell", "input", ...args]);
+  const say = (text) => { note.textContent = text; note.hidden = false; screen.hidden = true; };
+
+  async function findTools() {
+    const sdk = '"${ANDROID_HOME:-$HOME/Library/Android/sdk}"';
+    adb = (await sh(`command -v adb || ls ${sdk}/platform-tools/adb`)).output.trim().split("\n")[0];
+    emulator = (await sh(`command -v emulator || ls ${sdk}/emulator/emulator`)).output.trim().split("\n")[0];
+    if (!adb) return say("adb wasn't found.\nInstall the Android SDK platform tools, or set ANDROID_HOME in your shell profile.");
+    if (emulator) {
+      const names = (await run([emulator, "-list-avds"])).output.split("\n").map((line) => line.trim()).filter((line) => line && !line.includes(" "));
+      avd.replaceChildren(...names.map((name) => new Option(name, name)));
+    }
+    avd.hidden = $("start").hidden = avd.options.length === 0;
+    await refreshDevices();
+    setInterval(refreshDevices, 3000);
+    loop();
+  }
+
+  async function refreshDevices() {
+    const lines = (await run([adb, "devices"])).output.split("\n").slice(1);
+    const ready = lines.map((line) => line.trim().split(/\s+/)).filter((parts) => parts[1] === "device").map((parts) => parts[0]);
+    const chosen = serial() || (govi.getState() || {}).serial;
+    if (ready.join() !== [...device.options].map((option) => option.value).join()) {
+      device.replaceChildren(...ready.map((name) => new Option(name, name)));
+      if (ready.includes(chosen)) device.value = chosen;
+      if (serial()) govi.setState({ serial: serial() });
+    }
+    govi.setTitle(serial() ? "Android · " + serial() : "Android · no device");
+    if (!ready.length) say(avd.options.length ? "No device is running.\nChoose an emulator above and press Start, or plug in a device." : "No device is connected.");
+  }
+
+  async function loop() {
+    if (serial() && !busy && document.visibilityState === "visible") {
+      busy = true;
+      try {
+        // A full-resolution screenshot is a few megabytes once encoded as text.
+        const shot = await sh('"$1" -s "$2" exec-out screencap -p | base64', [adb, serial()], { limit: 16 << 20, timeout: 15 })
+          .catch(() => null);
+        if (shot && shot.status === 0 && shot.output.length > 100) {
+          screen.src = "data:image/png;base64," + shot.output.replace(/\s+/g, "");
+          screen.hidden = false;
+          note.hidden = true;
+        }
+      } finally { busy = false; }
+    }
+    setTimeout(loop, 250);
+  }
+
+  // A click taps; a drag swipes. Positions are scaled to the device's real pixels.
+  const point = (event) => {
+    const box = screen.getBoundingClientRect();
+    return [Math.round((event.clientX - box.left) * screen.naturalWidth / box.width), Math.round((event.clientY - box.top) * screen.naturalHeight / box.height)];
+  };
+  screen.addEventListener("pointerdown", (event) => { down = { at: point(event), time: Date.now() }; screen.setPointerCapture(event.pointerId); });
+  screen.addEventListener("pointerup", (event) => {
+    if (!down) return;
+    const [x, y] = point(event), [x0, y0] = down.at, held = Date.now() - down.time;
+    down = null;
+    if (Math.hypot(x - x0, y - y0) < 12) input("tap", String(x), String(y));
+    else input("swipe", String(x0), String(y0), String(x), String(y), String(Math.max(100, Math.min(held, 1500))));
+  });
+  screen.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const [x, y] = point(event), distance = Math.max(-600, Math.min(600, Math.round(-event.deltaY * 3)));
+    if (Math.abs(distance) > 30) input("swipe", String(x), String(y), String(x), String(y + distance), "120");
+  }, { passive: false });
+
+  document.querySelectorAll("button[data-key]").forEach((button) => {
+    button.onclick = () => input("keyevent", button.dataset.key);
+  });
+  $("text").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    const text = $("text").value;
+    $("text").value = "";
+    // `input text` wants spaces written as %s.
+    (text ? input("text", text.replace(/ /g, "%s")) : Promise.resolve()).then(() => input("keyevent", "66"));
+  });
+  $("start").onclick = () => {
+    if (!emulator || !avd.value) return;
+    // The emulator runs in its own terminal pane, so its output is visible and Control-C stops it.
+    const quote = (text) => "'" + text.replace(/'/g, "'\\''") + "'";
+    govi.call("pane.split", { direction: "down", command: `${quote(emulator)} -avd ${quote(avd.value)} -no-window` });
+    say("Starting " + avd.value + "… it appears here once it has booted.");
+  };
+  device.onchange = () => govi.setState({ serial: serial() });
+
+  findTools().catch((error) => say(String(error)));
+</script>

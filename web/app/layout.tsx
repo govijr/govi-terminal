@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Govi Terminal",
-  description: "Govi is a macOS terminal built on Ghostty, with workspaces, worktrees, tasks and agents.",
+  description:
+    "Govi is a free, open-source macOS terminal built on Ghostty, with workspaces, worktrees, tasks and agents.",
 };
 
 // Runs before first paint: applies a saved theme and marks JS as available (so the splash

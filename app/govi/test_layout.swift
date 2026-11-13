@@ -156,7 +156,8 @@ final class TestPane: NSView, Codable, Identifiable, SplitTreeLeaf {
         precondition(selfDock.structuralIdentity == single.structuralIdentity)
         // Leaves of different kinds share a base class (as terminal and browser
         // panes share GoviPaneView) and round-trip with their own subclasses.
-        let terminal = KindTerminal(0), browser = KindBrowser(7)
+        let terminal = KindTerminal(0)
+        let browser = KindBrowser(7)
         let kinds = try SplitTree<KindPane>(view: terminal).insert(view: browser, at: terminal, direction: .right)
         let decodedKinds = try JSONDecoder().decode(SplitTree<KindPane>.self, from: JSONEncoder().encode(kinds))
         precondition(decodedKinds.map { "\(type(of: $0))" } == ["KindTerminal", "KindBrowser"])

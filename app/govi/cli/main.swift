@@ -49,7 +49,9 @@ enum Client {
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         let bytes = Array(path.utf8)
-        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { throw GoviFailure("The socket path is too long: \(path)", code: 3) }
+        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
+            throw GoviFailure("The socket path is too long: \(path)", code: 3)
+        }
         withUnsafeMutableBytes(of: &address.sun_path) { buffer in buffer.copyBytes(from: bytes + [0]) }
         let connected = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
@@ -84,7 +86,8 @@ enum Client {
 // MARK: - Output
 
 func json(_ value: Any, pretty: Bool = true) -> String {
-    let options: JSONSerialization.WritingOptions = pretty ? [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed] : [.withoutEscapingSlashes, .fragmentsAllowed]
+    let options: JSONSerialization.WritingOptions =
+        pretty ? [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed] : [.withoutEscapingSlashes, .fragmentsAllowed]
     guard let data = try? JSONSerialization.data(withJSONObject: value, options: options) else { return String(describing: value) }
     return String(decoding: data, as: UTF8.self)
 }
@@ -226,6 +229,17 @@ let usage = """
       govi browser console [--clear]               Recent console output and errors
       Browser commands take --pane P to pick a browser pane.
 
+    Mods (folders in Govi's Mods directory that add panes, commands and automations)
+      govi mod list                      Installed mods, and what each adds
+      govi mod new NAME                  Create a small working mod to edit
+      govi mod enable ID | disable ID    Turn a mod on (Govi asks first) or off
+      govi mod open MOD[/PANE] [--down] [--focus]   Open one of a mod's panes beside this pane
+      govi mod run MOD/COMMAND           Run one of a mod's commands
+      govi mod reload [ID]               Read mod.json files again; with ID, restart that mod
+      govi mod install OWNER/REPO|URL    Download a mod with git (it stays off until enabled)
+      govi mod link [FOLDER]             Add a folder you're developing in as a mod
+      govi mod dir                       Print the Mods directory
+
     Other
       govi mcp                           Serve these commands to an agent over MCP (stdio)
       govi hello                         Check the connection
@@ -288,7 +302,8 @@ func run(_ argv: [String]) throws -> Int32 {
         var params: [String: Any] = ["force": arguments.has("--force", "-f")]
         if let id = arguments.positional.first { params["pane"] = id }
         return try send("pane.close", params) { result in
-            (result as? [String: Any])?["askedToConfirm"] as? Bool == true ? "Govi asked in its window whether to close it (a program may be running). Use --force to close without asking." : ""
+            (result as? [String: Any])?["askedToConfirm"] as? Bool == true
+                ? "Govi asked in its window whether to close it (a program may be running). Use --force to close without asking." : ""
         }
     case "zoom":
         return try send("pane.zoom", arguments.positional.first.map { ["pane": $0] } ?? [:]) { result in
@@ -297,7 +312,9 @@ func run(_ argv: [String]) throws -> Int32 {
     case "split":
         var params: [String: Any] = ["direction": direction(arguments), "focus": arguments.has("--focus")]
         if let cwd = arguments.value("--cwd") {
-            params["cwd"] = URL(fileURLWithPath: cwd, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).standardizedFileURL.path
+            params["cwd"] =
+                URL(fileURLWithPath: cwd, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).standardizedFileURL
+                .path
         }
         let commandWords = arguments.rest ?? arguments.positional
         if !commandWords.isEmpty { params["command"] = commandWords.joined(separator: " ") }
@@ -316,6 +333,8 @@ func run(_ argv: [String]) throws -> Int32 {
     case "browser", "b":
         arguments.positional = Array(arguments.positional)
         return try browser(arguments, send: send, pageLine: pageLine, paneLine: paneLine)
+    case "mod", "mods":
+        return try mod(arguments, send: send, paneLine: paneLine)
     default:
         throw GoviFailure("Unknown command \(command). Run `govi help`.", code: 2)
     }
@@ -332,7 +351,9 @@ func browser(
     if let seconds = arguments.value("--timeout").flatMap(Double.init) { timeout["timeout"] = seconds }
     func targetParams() throws -> [String: Any] {
         if let selector = arguments.value("--selector") { return ["selector": selector] }
-        guard !words.isEmpty else { throw GoviFailure("Give an element ref from `govi browser snapshot` (like e3) or a CSS selector.", code: 2) }
+        guard !words.isEmpty else {
+            throw GoviFailure("Give an element ref from `govi browser snapshot` (like e3) or a CSS selector.", code: 2)
+        }
         return target(words.removeFirst())
     }
 
@@ -342,7 +363,9 @@ func browser(
         if let url = words.first ?? arguments.value("--url") { params["url"] = url }
         return try send("browser.open", params, paneLine)
     case "go", "navigate", "goto":
-        guard let url = words.first ?? arguments.value("--url") else { throw GoviFailure("Give an address, e.g. `govi browser go localhost:3000`.", code: 2) }
+        guard let url = words.first ?? arguments.value("--url") else {
+            throw GoviFailure("Give an address, e.g. `govi browser go localhost:3000`.", code: 2)
+        }
         return try send("browser.navigate", timeout.merging(["url": url]) { $1 }, pageLine)
     case "back", "forward", "reload":
         return try send("browser.\(action)", timeout, pageLine)
@@ -353,7 +376,8 @@ func browser(
     case "click":
         return try send("browser.click", try targetParams()) { result in
             let info = result as? [String: Any] ?? [:]
-            return "Clicked \(info["clicked"] as? String ?? "element")\((info["text"] as? String).map { $0.isEmpty ? "" : " \"\($0)\"" } ?? "")."
+            return
+                "Clicked \(info["clicked"] as? String ?? "element")\((info["text"] as? String).map { $0.isEmpty ? "" : " \"\($0)\"" } ?? "")."
         }
     case "type", "fill":
         var params = try targetParams()
@@ -378,7 +402,8 @@ func browser(
             guard let base64 = (result as? [String: Any])?["base64"] as? String, let data = Data(base64Encoded: base64) else {
                 return "Govi didn't return a picture."
             }
-            let url = URL(fileURLWithPath: out, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).standardizedFileURL
+            let url = URL(fileURLWithPath: out, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+                .standardizedFileURL
             do {
                 try data.write(to: url)
                 return url.path
@@ -394,6 +419,89 @@ func browser(
         }
     default:
         throw GoviFailure("Unknown browser command \(action). Run `govi help`.", code: 2)
+    }
+}
+
+// MARK: - Mods
+
+func describeMod(_ value: Any) -> String {
+    guard let mod = value as? [String: Any] else { return json(value) }
+    let id = mod["id"] as? String ?? URL(fileURLWithPath: mod["folder"] as? String ?? "").lastPathComponent
+    var lines = [
+        "\(mod["enabled"] as? Bool == true ? "on " : "off")  \(id)  \(mod["name"] as? String ?? "") \(mod["version"] as? String ?? "")"
+    ]
+    for pane in mod["panes"] as? [[String: Any]] ?? [] {
+        lines.append(
+            "       pane     \(id)/\(pane["id"] as? String ?? "")  \(pane["title"] as? String ?? "") (\(pane["kind"] as? String ?? ""))")
+    }
+    for command in mod["commands"] as? [[String: Any]] ?? [] {
+        let shortcut = (command["shortcut"] as? String).map { "  [\($0)]" } ?? ""
+        lines.append("       command  \(id)/\(command["id"] as? String ?? "")  \(command["title"] as? String ?? "")\(shortcut)")
+    }
+    if let service = mod["service"] as? String { lines.append("       service  \(service)") }
+    if let problem = mod["problem"] as? String {
+        lines.append("       problem  " + problem.replacingOccurrences(of: "\n", with: "\n                "))
+    }
+    return lines.joined(separator: "\n")
+}
+
+func mod(
+    _ arguments: Arguments, send: (String, [String: Any], (Any) -> String) throws -> Int32, paneLine: @escaping (Any) -> String
+) throws -> Int32 {
+    var words = arguments.positional
+    let action = words.isEmpty ? "list" : words.removeFirst()
+    /// Splits `mod/item` into its two halves.
+    func pair(_ what: String) throws -> (String, String?) {
+        guard let text = words.first, !text.isEmpty else { throw GoviFailure("Say which \(what). Run `govi mod list`.", code: 2) }
+        let parts = text.split(separator: "/", maxSplits: 1).map(String.init)
+        return (parts[0], parts.count > 1 ? parts[1] : nil)
+    }
+    func listing(_ result: Any) -> String {
+        let info = result as? [String: Any] ?? [:]
+        let mods = info["mods"] as? [[String: Any]] ?? []
+        let folder = info["directory"] as? String ?? ""
+        if mods.isEmpty { return "No mods in \(folder).\nCreate one with `govi mod new NAME`." }
+        return (mods.map(describeMod) + ["", "Mods folder: \(folder)"]).joined(separator: "\n")
+    }
+
+    switch action {
+    case "list", "ls":
+        return try send("mods.list", [:], listing)
+    case "dir", "folder":
+        return try send("mods.list", [:]) { ($0 as? [String: Any])?["directory"] as? String ?? "" }
+    case "reload":
+        return try send("mods.reload", words.first.map { ["mod": $0] } ?? [:], listing)
+    case "new", "create":
+        guard !words.isEmpty else { throw GoviFailure("Give the mod a name, e.g. `govi mod new Android Emulator`.", code: 2) }
+        return try send("mods.new", ["name": words.joined(separator: " ")]) { result in
+            let info = result as? [String: Any] ?? [:]
+            let id = info["id"] as? String ?? ""
+            return "Created \(info["folder"] as? String ?? "").\nTurn it on with `govi mod enable \(id)`, then `govi mod open \(id)`."
+        }
+    case "enable", "disable":
+        guard let id = words.first else { throw GoviFailure("Say which mod, e.g. `govi mod \(action) my-mod`.", code: 2) }
+        return try send("mods.\(action)", ["mod": id], describeMod)
+    case "install", "add":
+        guard let source = words.first else { throw GoviFailure("Give a GitHub owner/repo or a git address.", code: 2) }
+        return try send("mods.install", ["source": source]) { result in
+            describeMod(result)
+                + "\nIt is off. Read what it runs, then `govi mod enable \((result as? [String: Any])?["id"] as? String ?? "ID")`."
+        }
+    case "link":
+        let path = URL(fileURLWithPath: words.first ?? ".", relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+            .standardizedFileURL.path
+        return try send("mods.link", ["path": path], describeMod)
+    case "open":
+        let (id, pane) = try pair("mod pane, e.g. `govi mod open my-mod/main`")
+        var params: [String: Any] = ["mod": id, "direction": direction(arguments), "focus": arguments.has("--focus")]
+        if let pane { params["modPane"] = pane }
+        return try send("mod.open", params, paneLine)
+    case "run":
+        let (id, command) = try pair("mod command, e.g. `govi mod run my-mod/hello`")
+        guard let command else { throw GoviFailure("Name the command as MOD/COMMAND. Run `govi mod list`.", code: 2) }
+        return try send("mod.run", ["mod": id, "command": command]) { _ in "" }
+    default:
+        throw GoviFailure("Unknown mod command \(action). Run `govi help`.", code: 2)
     }
 }
 
@@ -414,7 +522,9 @@ func integer(_ description: String) -> [String: Any] { ["type": "integer", "desc
 
 let paneProperty = string("Pane ID or its first 4+ characters, from govi_panes. Omit for your own pane.")
 let browserProperty = string("Browser pane ID or prefix. Omit for the browser in your workspace, else the most recent one.")
-let directionProperty: [String: Any] = ["type": "string", "enum": ["right", "down", "left", "up"], "description": "Where the new pane goes. Default right."]
+let directionProperty: [String: Any] = [
+    "type": "string", "enum": ["right", "down", "left", "up"], "description": "Where the new pane goes. Default right.",
+]
 let targetProperties: [String: Any] = [
     "ref": string("Element ref from govi_browser_snapshot, like e3."),
     "selector": string("CSS selector, used when there's no ref."),
@@ -423,12 +533,15 @@ let targetProperties: [String: Any] = [
 
 let tools: [MCPTool] = [
     MCPTool(
-        name: "govi_panes", description: "List every Govi pane (terminals and browsers) with ID, kind, title, folder or URL, workspace, and whether it is focused or is your own pane.",
+        name: "govi_panes",
+        description:
+            "List every Govi pane (terminals and browsers) with ID, kind, title, folder or URL, workspace, and whether it is focused or is your own pane.",
         properties: [:], required: []
     ) { _ in ("panes.list", [:]) },
     MCPTool(
         name: "govi_split",
-        description: "Open a new terminal or browser pane beside a pane. A terminal can run a command (it stays open afterwards). The person's focus isn't moved unless focus is true.",
+        description:
+            "Open a new terminal or browser pane beside a pane. A terminal can run a command (it stays open afterwards). The person's focus isn't moved unless focus is true.",
         properties: [
             "pane": paneProperty, "direction": directionProperty,
             "kind": ["type": "string", "enum": ["terminal", "browser"], "description": "Default terminal."],
@@ -438,15 +551,20 @@ let tools: [MCPTool] = [
             "focus": boolean("Move keyboard focus to the new pane."),
         ], required: []
     ) { ("pane.split", $0) },
-    MCPTool(name: "govi_focus", description: "Bring a pane to the front and focus it.", properties: ["pane": paneProperty], required: ["pane"]) { ("pane.focus", $0) },
     MCPTool(
-        name: "govi_close", description: "Close a pane. Terminals running a program ask the person to confirm unless force is true; only force-close panes you opened.",
+        name: "govi_focus", description: "Bring a pane to the front and focus it.", properties: ["pane": paneProperty], required: ["pane"]
+    ) { ("pane.focus", $0) },
+    MCPTool(
+        name: "govi_close",
+        description:
+            "Close a pane. Terminals running a program ask the person to confirm unless force is true; only force-close panes you opened.",
         properties: ["pane": paneProperty, "force": boolean("Close without asking, ending any running program.")], required: ["pane"]
     ) { ("pane.close", $0) },
     MCPTool(
         name: "govi_terminal_send",
         description: "Type text into a terminal pane, as if from the keyboard. Set enter to press Return afterwards (to run a command).",
-        properties: ["pane": paneProperty, "text": string("Text to type."), "enter": boolean("Press Return after the text.")], required: ["text"]
+        properties: ["pane": paneProperty, "text": string("Text to type."), "enter": boolean("Press Return after the text.")],
+        required: ["text"]
     ) { ("terminal.send", $0) },
     MCPTool(
         name: "govi_terminal_read", description: "Read the text a terminal pane shows, or its scrollback.",
@@ -457,13 +575,19 @@ let tools: [MCPTool] = [
         ], required: []
     ) { ("terminal.read", $0) },
     MCPTool(
-        name: "govi_browser_open", description: "Open a browser pane in Govi beside a pane, optionally at an address. The person can see and use it too.",
-        properties: ["url": string("Address, e.g. localhost:3000 or https://example.com."), "pane": paneProperty, "direction": directionProperty, "focus": boolean("Focus the new pane.")],
+        name: "govi_browser_open",
+        description: "Open a browser pane in Govi beside a pane, optionally at an address. The person can see and use it too.",
+        properties: [
+            "url": string("Address, e.g. localhost:3000 or https://example.com."), "pane": paneProperty, "direction": directionProperty,
+            "focus": boolean("Focus the new pane."),
+        ],
         required: []
     ) { ("browser.open", $0) },
     MCPTool(
         name: "govi_browser_navigate", description: "Load an address in a browser pane and wait for it to finish loading.",
-        properties: ["url": string("Address to load."), "pane": browserProperty, "timeout": integer("Seconds to wait, up to 60. Default 15.")], required: ["url"]
+        properties: [
+            "url": string("Address to load."), "pane": browserProperty, "timeout": integer("Seconds to wait, up to 60. Default 15."),
+        ], required: ["url"]
     ) { ("browser.navigate", $0) },
     MCPTool(
         name: "govi_browser_history", description: "Go back, go forward or reload in a browser pane.",
@@ -471,21 +595,33 @@ let tools: [MCPTool] = [
     ) { arguments in ("browser.\(arguments["action"] as? String ?? "reload")", arguments) },
     MCPTool(
         name: "govi_browser_snapshot",
-        description: "Read a browser pane: URL, title, visible text, and its interactive elements, each with a ref for govi_browser_click and govi_browser_type. Take a new snapshot after the page changes.",
+        description:
+            "Read a browser pane: URL, title, visible text, and its interactive elements, each with a ref for govi_browser_click and govi_browser_type. Take a new snapshot after the page changes.",
         properties: ["pane": browserProperty, "maxText": integer("Maximum characters of page text. Default 20000.")], required: []
     ) { ("browser.snapshot", $0) },
-    MCPTool(name: "govi_browser_click", description: "Click an element in a browser pane by ref or CSS selector.", properties: targetProperties, required: []) {
+    MCPTool(
+        name: "govi_browser_click", description: "Click an element in a browser pane by ref or CSS selector.", properties: targetProperties,
+        required: []
+    ) {
         ("browser.click", $0)
     },
     MCPTool(
-        name: "govi_browser_type", description: "Fill a text field in a browser pane by ref or CSS selector, replacing its value. Set submit to press Enter / submit the form.",
-        properties: targetProperties.merging(["text": string("Text to enter."), "submit": boolean("Submit after typing.")]) { $1 }, required: ["text"]
+        name: "govi_browser_type",
+        description:
+            "Fill a text field in a browser pane by ref or CSS selector, replacing its value. Set submit to press Enter / submit the form.",
+        properties: targetProperties.merging(["text": string("Text to enter."), "submit": boolean("Submit after typing.")]) { $1 },
+        required: ["text"]
     ) { ("browser.type", $0) },
     MCPTool(
-        name: "govi_browser_eval", description: "Run JavaScript in a browser pane's page and return the result as JSON. Expressions return their value; for statements, use return. Promises are awaited.",
+        name: "govi_browser_eval",
+        description:
+            "Run JavaScript in a browser pane's page and return the result as JSON. Expressions return their value; for statements, use return. Promises are awaited.",
         properties: ["script": string("JavaScript to run."), "pane": browserProperty], required: ["script"]
     ) { ("browser.eval", $0) },
-    MCPTool(name: "govi_browser_screenshot", description: "Take a screenshot of a browser pane.", properties: ["pane": browserProperty], required: []) {
+    MCPTool(
+        name: "govi_browser_screenshot", description: "Take a screenshot of a browser pane.", properties: ["pane": browserProperty],
+        required: []
+    ) {
         ("browser.screenshot", $0)
     },
     MCPTool(

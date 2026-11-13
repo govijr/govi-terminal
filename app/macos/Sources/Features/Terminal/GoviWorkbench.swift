@@ -330,6 +330,11 @@ struct GoviWorkbench<Content: View>: View {
             .onReceive(NotificationCenter.default.publisher(for: .goviShowSettings)) { _ in
                 if surface?.window == NSApp.keyWindow { toggleSettings() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .goviShowModSettings)) { _ in
+                guard surface?.window == NSApp.keyWindow, !settingsOpen else { return }
+                GoviSettingsView.pendingSection = "Mods"
+                openSettings()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .goviTasks)) { _ in
                 if surface?.window == NSApp.keyWindow { openTasks() }
             }
@@ -581,8 +586,10 @@ struct GoviWorkbench<Content: View>: View {
                                 if !$0 { filter = "" }
                             }))
                 } label: {
-                    GoviSymbol(symbol: "line.3.horizontal.decrease").frame(width: GoviChromeMetrics.button, height: GoviChromeMetrics.button)
-                        .modifier(GoviHoverHighlight(on: filterVisible || grouping != .project))
+                    GoviSymbol(symbol: "line.3.horizontal.decrease").frame(
+                        width: GoviChromeMetrics.button, height: GoviChromeMetrics.button
+                    )
+                    .modifier(GoviHoverHighlight(on: filterVisible || grouping != .project))
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help("Group and filter the sidebar").accessibilityLabel("Group and filter the sidebar")
@@ -702,7 +709,8 @@ struct GoviWorkbench<Content: View>: View {
     private func visibleEditorPanes(_ window: NSWindow) -> [GoviEditorPaneView] {
         let panes = (window.windowController as? TerminalController)?.surfaceTree.compactMap { $0 as? GoviEditorPaneView } ?? []
         return panes.filter {
-            filter.isEmpty || $0.displayPath.localizedCaseInsensitiveContains(filter) || $0.root.path.localizedCaseInsensitiveContains(filter)
+            filter.isEmpty || $0.displayPath.localizedCaseInsensitiveContains(filter)
+                || $0.root.path.localizedCaseInsensitiveContains(filter)
         }
     }
     private func directoryName(_ path: String) -> String {
@@ -814,6 +822,12 @@ struct GoviWorkbench<Content: View>: View {
                 controller?.focusedPane = item
                 window.makeFirstResponder(item.paneFocusTarget)
             }
+        } else if let item = pane as? GoviModPaneView {
+            GoviSidebarModPane(pane: item, active: front && focused === item) {
+                select()
+                controller?.focusedPane = item
+                window.makeFirstResponder(item.paneFocusTarget)
+            }
         }
     }
 
@@ -859,7 +873,7 @@ struct GoviWorkbench<Content: View>: View {
                 }
                 return ("kind:terminal", 100)
             }
-            return pane is GoviWebPaneView ? ("kind:web", 101) : ("kind:editor", 102)
+            return pane is GoviWebPaneView ? ("kind:web", 101) : pane is GoviEditorPaneView ? ("kind:editor", 102) : ("kind:mod", 103)
         case .machine:
             if let host = terminal?.goviLaunch.remote?.name { return ("host:" + host, 1) }
             return ("host:", 0)
@@ -890,7 +904,7 @@ struct GoviWorkbench<Content: View>: View {
         case "agent": return GoviAgent(rawValue: value)?.name ?? value
         case "host": return value.isEmpty ? "This Mac" : value
         case "state": return GoviActivityState(rawValue: value)?.label ?? value
-        default: return value == "web" ? "Browsers" : value == "editor" ? "Editors" : "Terminals"
+        default: return value == "web" ? "Browsers" : value == "editor" ? "Editors" : value == "mod" ? "Mods" : "Terminals"
         }
     }
 
@@ -904,8 +918,12 @@ struct GoviWorkbench<Content: View>: View {
         case "state":
             Circle().fill((GoviActivityState(rawValue: value) ?? .idle).tint(ui)).frame(width: 8, height: 8)
         default:
-            let kind: GoviGlyph.Kind = value == "web" ? .globe : value == "editor" ? .code : .terminal
-            GoviGlyph(kind: kind).foregroundStyle(ui.color(for: kind))
+            if value == "mod" {
+                Image(systemName: "puzzlepiece.extension").font(.system(size: 11)).foregroundStyle(ui.accent)
+            } else {
+                let kind: GoviGlyph.Kind = value == "web" ? .globe : value == "editor" ? .code : .terminal
+                GoviGlyph(kind: kind).foregroundStyle(ui.color(for: kind))
+            }
         }
     }
 

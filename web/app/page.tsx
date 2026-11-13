@@ -3,6 +3,9 @@ import { LaunchSplash } from "./components/LaunchSplash";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Wordmark } from "./components/Wordmark";
 
+const REPO = "https://github.com/govijr/govi-terminal";
+const RELEASES = `${REPO}/releases/latest`;
+
 // `token` maps to a --feat-* color defined in globals.css (light and dark).
 const features: Feature[] = [
   {
@@ -89,54 +92,95 @@ const features: Feature[] = [
 const intro =
   "transition duration-700 ease-out intro-pending:translate-y-3 intro-pending:opacity-0 motion-reduce:transition-none";
 
-// Every size and gap is in vw, so the layout scales with the window and with browser zoom.
-// The values are the original pixel design at a 1280px-wide window (1vw = 12.8px).
-const block = `mb-[1.9vw] text-[1.72vw] leading-[1.6] ${intro}`;
+const gutter = "px-4 sm:px-8 lg:px-12";
+
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
+  );
+}
+
+function DownloadIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+    </svg>
+  );
+}
 
 export default function Home() {
   return (
     <div className="flex min-h-dvh flex-col">
       <LaunchSplash />
 
-      <header className={`mx-[4.69vw] flex h-[8.75vw] items-center justify-end text-[1.33vw] ${intro}`}>
-        <nav className="flex gap-[2.19vw]">
-          <ThemeToggle />
-        </nav>
+      <header className={`${gutter} flex h-14 items-center justify-end gap-6 text-sm ${intro}`}>
+        {/* <a href={REPO} className="flex items-center gap-1.5 text-muted transition-colors hover:text-ink">
+          <GitHubIcon className="size-4" />
+          GitHub
+        </a> */}
+        <ThemeToggle />
       </header>
 
-      {/* Content sits at the bottom of the window. */}
-      <div className="flex flex-1 flex-col justify-end px-[4.69vw] max-w-[50vw]">
-        <main>
-          {/* The splash wordmark lands here, 15% smaller than it was drawn. */}
-          <a
-            href="#download"
-            aria-label="govi terminal, download"
-            className="hero-mark mt-[0.6vw] mb-[1.4vw] block w-full max-w-[34.5vw] intro-pending:invisible"
-          >
+      <main
+        className={`${gutter} mx-auto grid w-full max-w-[1440px] flex-1 items-center gap-10 py-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16 lg:py-6`}
+      >
+        <div className="flex min-w-0 flex-col">
+          {/* The splash wordmark lands here. */}
+          <div className="hero-mark mb-6 block w-full max-w-[min(22rem,100%)] intro-pending:invisible">
             <Wordmark id="hero-wordmark" className="block h-auto w-full" />
-          </a>
+          </div>
 
-          <section className={block}>
-            <span className="">
-             The terminal you would get addicated.
-            </span>
-            <br/>
-            {/* <br/> */}
+          <div className={intro}>
+            {/* <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-line px-3 py-1 text-xs text-muted">
+              <span className="size-1.5 rounded-full bg-[var(--feat-git)]" aria-hidden="true" />
+              Free and open source
+            </p>
+
+            <h1 className="text-[clamp(1.75rem,3.2vw,2.75rem)] leading-[1.1] font-semibold tracking-tight text-balance">
+              The Mac terminal built for working with agents.
+            </h1> */}
+            <p className="mt-4 max-w-[34rem] text-[clamp(1rem,1.25vw,1.125rem)] leading-relaxed text-muted text-pretty">
+            Delightful terminal for working with AI agents.
+            </p>
+          </div>
+
+          <div className={`mt-6 text-[clamp(0.95rem,1.15vw,1.05rem)] leading-[1.75] delay-100 ${intro}`}>
             <FeatureParagraph features={features} />
-          </section>
+          </div>
 
-          <button className="w-full rounded-md bg-black px-[0.6vw] py-[0.6vw] text-[1.04vw] text-white dark:bg-white dark:text-black">
-            Buy for $49
-          </button>
-        </main>
+          <div className={`mt-8 flex flex-wrap items-center gap-3 delay-200 ${intro}`}>
+            <a
+              id="download"
+              href={RELEASES}
+              className="inline-flex h-11 items-center gap-2 rounded-lg bg-ink px-5 text-sm font-medium text-canvas transition-opacity hover:opacity-85"
+            >
+              <DownloadIcon className="size-4" />
+              Download for macOS
+            </a>
+            <a
+              href={REPO}
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-line px-5 text-sm font-medium transition-colors hover:bg-surface"
+            >
+              <GitHubIcon className="size-4" />
+              Star on GitHub
+            </a>
+          </div>
+        </div>
 
-        <footer
-          className={`mt-[3.5vw] flex w-full max-w-[39vw] justify-between pb-[3.75vw] text-[1.09vw] text-muted delay-300 ${intro}`}
-        >
-          <span>© 2026 govi</span>
-          <span>built on ghostty</span>
-        </footer>
-      </div>
+        <div className={`min-w-0 delay-300 ${intro}`}>
+          <video
+            src="/govi-terminal-v3.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-label="Govi running agents in split panes"
+            className="block w-full rounded-xl border border-line shadow-[0_24px_60px_-20px_rgb(0_0_0/0.35)]"
+          />
+        </div>
+      </main>
     </div>
   );
 }

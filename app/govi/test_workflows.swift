@@ -182,8 +182,12 @@ import Foundation
         precondition(!future.isValid)
 
         // Clicked file paths with line and column.
-        precondition(GoviLinkRouter.fileLocation("./src/app.ts:42:7", relativeTo: "/tmp/project") == .init(path: "/tmp/project/src/app.ts", line: 42, column: 7))
-        precondition(GoviLinkRouter.fileLocation("../lib/a.swift:12:", relativeTo: "/tmp/project") == .init(path: "/tmp/lib/a.swift", line: 12, column: nil))
+        precondition(
+            GoviLinkRouter.fileLocation("./src/app.ts:42:7", relativeTo: "/tmp/project")
+                == .init(path: "/tmp/project/src/app.ts", line: 42, column: 7))
+        precondition(
+            GoviLinkRouter.fileLocation("../lib/a.swift:12:", relativeTo: "/tmp/project")
+                == .init(path: "/tmp/lib/a.swift", line: 12, column: nil))
         precondition(GoviLinkRouter.fileLocation("/etc/hosts", relativeTo: nil) == .init(path: "/etc/hosts", line: nil, column: nil))
         precondition(GoviLinkRouter.fileLocation("file:///tmp/a%20b.txt", relativeTo: nil)?.path == "/tmp/a b.txt")
         precondition(GoviLinkRouter.fileLocation("file://otherhost/tmp/a.txt", relativeTo: nil) == nil)
@@ -197,9 +201,13 @@ import Foundation
         precondition(GoviLinkRouter.previewTarget("hosts", relativeTo: "/etc") == nil)
         precondition(GoviLinkRouter.previewTarget("./hosts", relativeTo: "/etc")?.path == "/etc/hosts")
         precondition(GoviLinkRouter.previewTarget("/no/such/file.png", relativeTo: nil) == nil)
-        precondition(GoviLinkRouter.previewTarget(".", relativeTo: "/etc") == nil && GoviLinkRouter.previewTarget("/", relativeTo: nil) == nil)
+        precondition(
+            GoviLinkRouter.previewTarget(".", relativeTo: "/etc") == nil && GoviLinkRouter.previewTarget("/", relativeTo: nil) == nil)
         let printed = "see /etc/hosts and https://example.com\nagain /etc/hosts then 1.5 ./missing.txt"
-        precondition(GoviLinkRouter.previewTargets(in: printed, relativeTo: "/tmp").map(\.absoluteString) == ["https://example.com", "file:///etc/hosts"])
+        precondition(
+            GoviLinkRouter.previewTargets(in: printed, relativeTo: "/tmp").map(\.absoluteString) == [
+                "https://example.com", "file:///etc/hosts",
+            ])
         precondition(GoviLinkRouter.token(in: "open /tmp/a.gif now", atColumn: 9, containing: "a.gif") == "/tmp/a.gif")
         precondition(GoviLinkRouter.token(in: "日本 /tmp/a.gif", atColumn: 12, containing: "a.gif") == "/tmp/a.gif")
         precondition(GoviLinkRouter.token(in: "open /tmp/a.gif now", atColumn: 4, containing: "zzz") == nil)
@@ -207,10 +215,12 @@ import Foundation
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("govi-text-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: scratch) }
-        let textFile = scratch.appendingPathComponent("a.ts"), binaryFile = scratch.appendingPathComponent("b.bin")
+        let textFile = scratch.appendingPathComponent("a.ts")
+        let binaryFile = scratch.appendingPathComponent("b.bin")
         try Data("let x = 1\n".utf8).write(to: textFile)
         try Data([0x89, 0x50, 0x00, 0x01]).write(to: binaryFile)
-        precondition(GoviTextFile.isEditable(textFile.path) && !GoviTextFile.isEditable(binaryFile.path) && !GoviTextFile.isEditable(scratch.path))
+        precondition(
+            GoviTextFile.isEditable(textFile.path) && !GoviTextFile.isEditable(binaryFile.path) && !GoviTextFile.isEditable(scratch.path))
         precondition((try? GoviTextFile.read(textFile).get()) == "let x = 1\n")
         if case .success = GoviTextFile.read(binaryFile) { preconditionFailure("binary file read as text") }
 
@@ -222,7 +232,9 @@ import Foundation
             then http://0.0.0.0:8000/docs. Also (http://127.0.0.1:3000/api).
             """
         precondition(GoviLinkRouter.latestLocalURL(in: devLog)?.absoluteString == "http://127.0.0.1:3000/api")
-        precondition(GoviLinkRouter.latestLocalURL(in: "Uvicorn running on http://0.0.0.0:8000/docs.")?.absoluteString == "http://localhost:8000/docs")
+        precondition(
+            GoviLinkRouter.latestLocalURL(in: "Uvicorn running on http://0.0.0.0:8000/docs.")?.absoluteString
+                == "http://localhost:8000/docs")
         precondition(GoviLinkRouter.latestLocalURL(in: "  ➜  Local:   http://localhost:5173/")?.absoluteString == "http://localhost:5173/")
         precondition(GoviLinkRouter.latestLocalURL(in: "see https://example.com and http://192.168.1.4:3000") == nil)
         precondition(GoviLinkRouter.latestLocalURL(in: "at http://app.localhost:8080/x,")?.absoluteString == "http://app.localhost:8080/x")
@@ -231,8 +243,11 @@ import Foundation
         precondition(!GoviLinkRouter.isLocalWeb(URL(string: "http://localhost.example.com")!))
         precondition(!GoviLinkRouter.isLocalWeb(URL(string: "file:///tmp/a.html")!))
         precondition(!GoviLinkRouter.isLocalWeb(URL(string: "https://example.com")!))
-        precondition(GoviLinkRouter.origin(URL(string: "http://localhost:3000/a")!) == GoviLinkRouter.origin(URL(string: "http://LocalHost:3000/b?c")!))
-        precondition(GoviLinkRouter.origin(URL(string: "http://localhost:3000")!) != GoviLinkRouter.origin(URL(string: "http://localhost:3001")!))
+        precondition(
+            GoviLinkRouter.origin(URL(string: "http://localhost:3000/a")!)
+                == GoviLinkRouter.origin(URL(string: "http://LocalHost:3000/b?c")!))
+        precondition(
+            GoviLinkRouter.origin(URL(string: "http://localhost:3000")!) != GoviLinkRouter.origin(URL(string: "http://localhost:3001")!))
         print(
             "Passed workspace/template round trips, ID isolation, bounds, quoting, helper timeouts, status transitions, duplicate hooks, event validation, shortcut conflicts, editor records and link detection."
         )

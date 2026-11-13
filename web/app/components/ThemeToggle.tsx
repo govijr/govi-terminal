@@ -1,17 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "govi-theme";
 
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+type Theme = "light" | "dark";
 
-  useEffect(() => {
-    const attr = document.documentElement.dataset.theme;
-    const dark = attr ? attr === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
-    setTheme(dark ? "dark" : "light");
-  }, []);
+// The theme lives on <html data-theme>, set before hydration by the inline
+// script in the layout. Reading it as an external store keeps the button in
+// sync without a state update inside an effect.
+function subscribe(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  media.addEventListener("change", onChange);
+  return () => {
+    observer.disconnect();
+    media.removeEventListener("change", onChange);
+  };
+}
+
+function currentTheme(): Theme {
+  const attr = document.documentElement.dataset.theme;
+  const dark = attr ? attr === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return dark ? "dark" : "light";
+}
+
+export function ThemeToggle() {
+  const theme = useSyncExternalStore(subscribe, currentTheme, (): Theme => "light");
 
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
@@ -19,7 +35,6 @@ export function ThemeToggle() {
     try {
       localStorage.setItem(STORAGE_KEY, next);
     } catch {}
-    setTheme(next);
   }
 
   return (

@@ -192,7 +192,9 @@ extension BaseTerminalController {
             floating.float(pane.id)
         }
         floating.setMinimized(pane.id, true)
-        if focusedPane === pane || focusedPane == nil, let next = dockedPanes.last ?? surfaceTree.first(where: { !floating.isMinimized($0.id) }) {
+        if focusedPane === pane || focusedPane == nil,
+            let next = dockedPanes.last ?? surfaceTree.first(where: { !floating.isMinimized($0.id) })
+        {
             DispatchQueue.main.async { Ghostty.moveFocus(to: next, from: pane) }
         }
     }
@@ -276,6 +278,8 @@ struct GoviPaneLeaf: View {
             GoviWebPane(pane: web, isSplit: isSplit)
         } else if let editor = pane as? GoviEditorPaneView {
             GoviEditorPane(pane: editor, isSplit: isSplit)
+        } else if let mod = pane as? GoviModPaneView {
+            GoviModPane(pane: mod, isSplit: isSplit)
         }
     }
 }
@@ -348,7 +352,10 @@ struct GoviFloatingPaneWindow: View {
     }
 
     private func configureDrag() {
-        let id = pane.id, floating = self.floating, pane = self.pane, drag = self.drag
+        let id = pane.id
+        let floating = self.floating
+        let pane = self.pane
+        let drag = self.drag
         drag.began = { [weak floating, unowned drag] in
             floating?.raise(id)
             drag.start = floating?.frame(for: id, in: drag.area)
@@ -428,6 +435,8 @@ struct GoviMinimizedPaneChips: View {
             GoviMinimizedChip(model: web, pane: pane, floating: floating)
         } else if let editor = pane as? GoviEditorPaneView {
             GoviMinimizedChip(model: editor, pane: pane, floating: floating)
+        } else if let mod = pane as? GoviModPaneView {
+            GoviMinimizedChip(model: mod, pane: pane, floating: floating)
         }
     }
 }

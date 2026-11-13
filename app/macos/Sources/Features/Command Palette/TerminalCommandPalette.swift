@@ -15,6 +15,7 @@ struct TerminalCommandPaletteView: View {
     @ObservedObject var ghosttyConfig: Ghostty.Config
     @ObservedObject private var notebook = GoviNotebook.shared
     @ObservedObject private var shortcuts = GoviShortcuts.shared
+    @ObservedObject private var mods = GoviMods.shared
 
     /// The callback when an action is submitted.
     var onAction: ((String) -> Void)
@@ -45,10 +46,7 @@ struct TerminalCommandPaletteView: View {
             }
             let navigation = TerminalController.all.flatMap { controller in
                 controller.surfaceTree.map { pane in
-                    let kind = pane is Ghostty.SurfaceView ? "Terminal" : pane is GoviEditorPaneView ? "Editor" : "Browser"
-                    let detail =
-                        (pane as? GoviWebPaneView)?.url?.absoluteString ?? (pane as? GoviEditorPaneView)?.file?.path ?? pane.paneDirectory ?? ""
-                    return CommandOption(title: "\(kind): \(GoviPaneNaming.title(pane))", description: detail, symbols: nil) {
+                    return CommandOption(title: "\(pane.paneKindLabel): \(GoviPaneNaming.title(pane))", description: pane.paneDetail, symbols: nil) {
                         controller.window?.tabGroup?.selectedWindow = controller.window
                         controller.window?.makeKeyAndOrderFront(nil)
                         controller.focusedPane = pane
@@ -95,7 +93,19 @@ struct TerminalCommandPaletteView: View {
             let tasks = CommandOption(title: "Tasks — GitHub and Linear", description: "Start from an issue, review pull requests, and share results.", symbols: nil) {
                 NotificationCenter.default.post(name: .goviTasks, object: nil)
             }
-            return [find, tasks, attention, nextAttention, browser, editor, focus, sidebar, settings, templates, saveTemplate] + tools + navigation + projects + saved + builtins
+            // Commands that enabled mods declare in their mod.json.
+            let modCommands = mods.commandItems.map { item in
+                CommandOption(
+                    title: "\(item.mod.name): \(item.command.title)", description: item.command.description ?? "From the \(item.mod.name) mod.",
+                    symbols: item.chord?.symbols
+                ) {
+                    GoviMods.shared.perform(item, in: GoviPaneCoordinator.owner(of: surfaceView.id))
+                }
+            }
+            let modSettings = CommandOption(title: "Mods…", description: "Turn mods on or off, create one, or open the Mods folder.", symbols: nil) {
+                NotificationCenter.default.post(name: .goviShowModSettings, object: nil)
+            }
+            return [find, tasks, attention, nextAttention, browser, editor, focus, sidebar, settings, modSettings, templates, saveTemplate] + modCommands + tools + navigation + projects + saved + builtins
         } catch {
             return []
         }
