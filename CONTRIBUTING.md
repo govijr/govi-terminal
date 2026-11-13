@@ -151,10 +151,10 @@ Pull requests are squash-merged, so the title becomes the commit message on
 
 ## License
 
-Govi is licensed under the [Apache License 2.0](LICENSE). By submitting a
-pull request you agree that your contribution is licensed under it, as
-described in section 5 of the license. You keep the copyright to your work.
+Govi is licensed under the [MIT License](LICENSE). By submitting a pull
+request you agree that your contribution is licensed under it. You keep
+the copyright to your work.
 
 If you copy code from another project, say so in the pull request and keep
-its license notice. Only code under a license compatible with Apache 2.0 can
-be accepted.
+its license notice. Contributions must be compatible with the project's MIT
+license and preserve any third-party licensing requirements.
