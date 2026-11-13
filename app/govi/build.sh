@@ -59,6 +59,8 @@ ditto .build/macos/ReleaseLocal/Ghostty.app dist/Govi.app
 rm -rf dist/Govi.app/Contents/Resources/Govi
 ditto govi/Govi dist/Govi.app/Contents/Resources/Govi
 mkdir -p dist/Govi.app/Contents/Resources/Govi/Licenses
+cp ../LICENSE dist/Govi.app/Contents/Resources/Govi/Licenses/Govi-LICENSE.txt
+cp ../NOTICE dist/Govi.app/Contents/Resources/Govi/Licenses/Govi-NOTICE.txt
 cp LICENSE dist/Govi.app/Contents/Resources/Govi/Licenses/Ghostty-LICENSE.txt
 ditto "$monaco_dir/vs" dist/Govi.app/Contents/Resources/Govi/editor/vs
 cp "$monaco_dir/LICENSE" dist/Govi.app/Contents/Resources/Govi/Licenses/Monaco-LICENSE.txt

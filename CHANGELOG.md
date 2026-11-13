@@ -6,6 +6,11 @@ follow [Semantic Versioning](https://semver.org/) once releases begin.
 
 ## [Unreleased]
 
+### Changed
+
+- Govi is now licensed under MIT. Third-party licenses and copyright notices
+  are retained.
+
 ### Added
 
 - Mods: folders with a `mod.json` that add web or terminal panes, command

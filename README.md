@@ -1,7 +1,7 @@
 # Govi
 
 [![CI](https://github.com/govijr/govi-terminal/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/govijr/govi-terminal/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Govi is a native macOS terminal workspace for working with coding agents. It
 is built on the [Ghostty](https://github.com/ghostty-org/ghostty) terminal
@@ -46,7 +46,7 @@ how to set up, test and submit a pull request, and follow our
 
 ## License
 
-Govi is licensed under the [Apache License 2.0](LICENSE).
+Govi is licensed under the [MIT License](LICENSE).
 
 Govi is built on Ghostty, which is © Mitchell Hashimoto and Ghostty
 contributors and licensed under the [MIT License](app/LICENSE). Code that came
