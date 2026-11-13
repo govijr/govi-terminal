@@ -278,6 +278,8 @@ struct GoviPaneLeaf: View {
             GoviWebPane(pane: web, isSplit: isSplit)
         } else if let editor = pane as? GoviEditorPaneView {
             GoviEditorPane(pane: editor, isSplit: isSplit)
+        } else if let mod = pane as? GoviModPaneView {
+            GoviModPane(pane: mod, isSplit: isSplit)
         }
     }
 }
@@ -433,6 +435,8 @@ struct GoviMinimizedPaneChips: View {
             GoviMinimizedChip(model: web, pane: pane, floating: floating)
         } else if let editor = pane as? GoviEditorPaneView {
             GoviMinimizedChip(model: editor, pane: pane, floating: floating)
+        } else if let mod = pane as? GoviModPaneView {
+            GoviMinimizedChip(model: mod, pane: pane, floating: floating)
         }
     }
 }

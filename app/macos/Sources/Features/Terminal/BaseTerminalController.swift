@@ -735,6 +735,14 @@ class BaseTerminalController: NSWindowController,
                 .sink { [weak self] in self?.titleDidChange(to: $0) }
                 .store(in: &focusedSurfaceCancellables)
         }
+        if let mod = pane as? GoviModPaneView {
+            mod.$title
+                .receive(on: DispatchQueue.main)
+                .map { [weak mod] _ in mod?.paneTitle ?? "" }
+                .sink { [weak self] in self?.titleDidChange(to: $0) }
+                .store(in: &focusedSurfaceCancellables)
+        }
+        GoviMods.shared.noteFocus(pane)
     }
 
     func focusedSurfaceDidChange(to: Ghostty.SurfaceView?) {
@@ -749,6 +757,7 @@ class BaseTerminalController: NSWindowController,
         }
         let lastFocusedSurface = focusedSurface
         focusedSurface = to
+        if let to { GoviMods.shared.noteFocus(to) }
 
         // Important to cancel any prior subscriptions
         focusedSurfaceCancellables = []

@@ -181,12 +181,13 @@ struct GoviControlError: Error {
 @MainActor
 enum GoviControl {
     static let protocolVersion = 1
-    static let methods = [
-        "hello", "panes.list", "pane.focus", "pane.split", "pane.close", "pane.zoom",
-        "terminal.send", "terminal.read",
-        "browser.open", "browser.navigate", "browser.back", "browser.forward", "browser.reload",
-        "browser.snapshot", "browser.click", "browser.type", "browser.eval", "browser.screenshot", "browser.console",
-    ]
+    static let methods =
+        [
+            "hello", "panes.list", "pane.focus", "pane.split", "pane.close", "pane.zoom",
+            "terminal.send", "terminal.read",
+            "browser.open", "browser.navigate", "browser.back", "browser.forward", "browser.reload",
+            "browser.snapshot", "browser.click", "browser.type", "browser.eval", "browser.screenshot", "browser.console",
+        ] + GoviMods.methods
 
     static func handle(_ method: String, params: [String: Any], caller: UUID?) async throws -> Any {
         switch method {
@@ -292,6 +293,8 @@ enum GoviControl {
             let entries = web.consoleEntries
             if params["clear"] as? Bool == true { web.consoleEntries.removeAll() }
             return ["pane": web.id.uuidString, "entries": entries]
+        case _ where GoviMods.methods.contains(method):
+            return try await GoviMods.shared.control(method, params: params, caller: caller)
         default:
             throw GoviControlError("Unknown method \(method). Run `govi help` for the commands this Govi supports.")
         }
@@ -302,7 +305,7 @@ enum GoviControl {
     static func describe(_ pane: GoviPaneView, in controller: TerminalController, caller: UUID?) -> [String: Any] {
         var info: [String: Any] = [
             "id": pane.id.uuidString,
-            "kind": pane is GoviWebPaneView ? "browser" : pane is GoviEditorPaneView ? "editor" : "terminal",
+            "kind": pane.paneKindName,
             "title": pane.paneTitle,
             "focused": controller.focusedPane === pane && controller.window?.isKeyWindow == true,
             "self": pane.id == caller,
@@ -313,6 +316,10 @@ enum GoviControl {
         if let web = pane as? GoviWebPaneView {
             info["url"] = web.url?.absoluteString ?? ""
             info["loading"] = web.isLoading
+        }
+        if let mod = pane as? GoviModPaneView {
+            info["mod"] = mod.modID
+            info["modPane"] = mod.paneID
         }
         return info
     }
@@ -337,7 +344,7 @@ enum GoviControl {
     static func terminal(_ spec: Any?, caller: UUID?) throws -> Ghostty.SurfaceView {
         let (_, pane) = try find(spec, caller: caller)
         guard let surface = pane as? Ghostty.SurfaceView else {
-            throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a browser, not a terminal.")
+            throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a \(pane.paneKindName) pane, not a terminal.")
         }
         return surface
     }
@@ -348,7 +355,7 @@ enum GoviControl {
         if spec != nil {
             let (_, pane) = try find(spec, caller: caller)
             guard let web = pane as? GoviWebPaneView else {
-                throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a terminal, not a browser.")
+                throw GoviControlError("Pane \(pane.id.uuidString.prefix(8)) is a \(pane.paneKindName) pane, not a browser.")
             }
             return web
         }

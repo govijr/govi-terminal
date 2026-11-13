@@ -49,11 +49,14 @@ import SwiftUI
             return true
         }
         guard let chord = Self.chord(from: event),
-            let action = GoviShortcutAction.allCases.first(where: { self.chord($0) == chord }),
             let window = NSApp.keyWindow, window.attachedSheet == nil,
             let controller = window.windowController as? TerminalController
         else { return false }
         if let editor = window.firstResponder as? NSTextView, editor.isFieldEditor { return false }
+        // Govi's own shortcuts come first; a mod can only use a combination Govi doesn't.
+        guard let action = GoviShortcutAction.allCases.first(where: { self.chord($0) == chord }) else {
+            return !event.isARepeat && GoviMods.shared.handleKey(chord, in: controller)
+        }
         if let pane = controller.focusedPane, !(pane is Ghostty.SurfaceView),
             controller.performPaneCommand(action, on: pane)
         {

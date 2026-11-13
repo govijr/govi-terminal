@@ -124,6 +124,7 @@ class AppDelegate: NSObject,
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         GoviControlServer.shared.start()
+        GoviMods.shared.start()
         if let editMenu = NSApp.mainMenu?.items.first(where: { $0.title == "Edit" })?.submenu {
             let find = NSMenuItem(title: "Find in Terminal Output…", action: #selector(goviFindOutput(_:)), keyEquivalent: "f")
             find.target = self
@@ -363,6 +364,7 @@ class AppDelegate: NSObject,
         GoviPersistence.terminating = true
         GoviWorkspaceStore.shared.save(wait: true)
         GoviInlineService.shared.stop()
+        GoviMods.shared.stop()
         GoviControlServer.shared.stop()
         // We have no notifications we want to persist after death,
         // so remove them all now. In the future we may want to be

@@ -632,7 +632,8 @@ extension Ghostty {
             // Other files and web pages get a Quick Look preview over the window.
             if target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface,
                let view = surfaceView(from: surface),
-               GoviLinkRouter.open(url, from: view) || (url.isFileURL && GoviLinkRouter.openFile(action.url, from: view))
+               MainActor.assumeIsolated({ GoviMods.shared.handleLink(action.url, from: view) })
+                || GoviLinkRouter.open(url, from: view) || (url.isFileURL && GoviLinkRouter.openFile(action.url, from: view))
                 || GoviQuickLook.shared.previewClicked(action.url, from: view) {
                 return true
             }

@@ -252,7 +252,11 @@ enum GoviActivityPreferences {
         let inferred: GoviActivityState =
             entry.failed ? .error : entry.attention ? .needsInput : working ? .working : entry.finished ? .done : .idle
         let state = entry.reported?.visibleState ?? inferred
-        if info[id]?.state != state { entry.changedAt = now }
+        if info[id]?.state != state {
+            entry.changedAt = now
+            GoviMods.shared.noteAgentState(
+                id, state: state.rawValue, agent: entry.agent?.rawValue, label: entry.label, project: entry.project, branch: entry.branch)
+        }
         let next = Info(
             state: state, agent: entry.agent, label: entry.label,
             project: entry.project, branch: entry.branch,

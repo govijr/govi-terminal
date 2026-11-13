@@ -68,6 +68,7 @@ class GoviPaneView: NSView, Identifiable, SplitTreeLeaf {
         case Ghostty.SurfaceView.kindName: pane = try Ghostty.SurfaceView(from: decoder)
         case GoviWebPaneView.kindName: pane = try GoviWebPaneView(from: decoder)
         case GoviEditorPaneView.kindName: pane = try GoviEditorPaneView(from: decoder)
+        case GoviModPaneView.kindName: pane = try GoviModPaneView(from: decoder)
         default:
             throw DecodingError.dataCorrupted(
                 .init(codingPath: decoder.codingPath, debugDescription: "Unknown pane kind \(kind ?? "")"))
@@ -77,6 +78,33 @@ class GoviPaneView: NSView, Identifiable, SplitTreeLeaf {
                 Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Pane kind \(pane.paneKind) is not \(Self.self)"))
         }
         return typed
+    }
+}
+
+// MARK: - Describing any pane
+
+extension GoviPaneView {
+    /// The kind as the `govi` command and mods see it: terminal, browser, editor or mod.
+    var paneKindName: String { paneKind == GoviWebPaneView.kindName ? "browser" : paneKind }
+
+    /// The kind as people read it; a mod's pane is named after its mod.
+    var paneKindLabel: String {
+        switch self {
+        case is Ghostty.SurfaceView: "Terminal"
+        case is GoviWebPaneView: "Browser"
+        case is GoviEditorPaneView: "Editor"
+        case let mod as GoviModPaneView: mod.modName
+        default: "Pane"
+        }
+    }
+
+    /// Where the pane is: an address, a file or a folder.
+    var paneDetail: String {
+        switch self {
+        case let web as GoviWebPaneView: web.url?.absoluteString ?? ""
+        case let editor as GoviEditorPaneView: editor.file?.path ?? editor.root.path
+        default: paneDirectory ?? ""
+        }
     }
 }
 
@@ -169,7 +197,7 @@ extension BaseTerminalController {
     /// Adds `pane` beside `anchor` (or the focused pane) and focuses it.
     func insertPane(
         _ pane: GoviPaneView, beside anchor: GoviPaneView?, direction: SplitTree<GoviPaneView>.NewDirection = .right,
-        undoAction: String
+        undoAction: String, focus: Bool = true
     ) -> Bool {
         let anchor = anchor.flatMap { surfaceTree.contains($0) ? $0 : nil } ?? focusedPane ?? surfaceTree.root?.leftmostLeaf()
         let tree: SplitTree<GoviPaneView>
@@ -179,7 +207,7 @@ extension BaseTerminalController {
             Ghostty.logger.warning("failed to open \(pane.paneKind) pane: \(error)")
             return false
         }
-        replaceSurfaceTree(tree, moveFocusTo: pane, moveFocusFrom: focusedPane, undoAction: undoAction)
+        replaceSurfaceTree(tree, moveFocusTo: focus ? pane : nil, moveFocusFrom: focusedPane, undoAction: undoAction)
         return true
     }
 }

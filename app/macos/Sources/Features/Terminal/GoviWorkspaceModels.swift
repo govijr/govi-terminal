@@ -83,13 +83,15 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
     case terminal(GoviPaneRecord)
     case web(GoviWebPaneRecord)
     case editor(GoviEditorPaneRecord)
+    /// A web pane that belongs to a mod.
+    case mod(GoviModPaneRecord)
     case split(vertical: Bool, ratio: Double, first: GoviWorkspaceLayout, second: GoviWorkspaceLayout)
 
     /// Terminal panes, in layout order.
     var panes: [GoviPaneRecord] {
         switch self {
         case .terminal(let pane): return [pane]
-        case .web, .editor: return []
+        case .web, .editor, .mod: return []
         case .split(_, _, let first, let second): return first.panes + second.panes
         }
     }
@@ -97,7 +99,7 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
     /// Browser panes, in layout order.
     var webPanes: [GoviWebPaneRecord] {
         switch self {
-        case .terminal, .editor: return []
+        case .terminal, .editor, .mod: return []
         case .web(let pane): return [pane]
         case .split(_, _, let first, let second): return first.webPanes + second.webPanes
         }
@@ -106,7 +108,7 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
     /// Editor panes, in layout order.
     var editorPanes: [GoviEditorPaneRecord] {
         switch self {
-        case .terminal, .web: return []
+        case .terminal, .web, .mod: return []
         case .editor(let pane): return [pane]
         case .split(_, _, let first, let second): return first.editorPanes + second.editorPanes
         }
@@ -118,6 +120,7 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
         case .terminal(let pane): return [pane.id]
         case .web(let pane): return [pane.id]
         case .editor(let pane): return [pane.id]
+        case .mod(let pane): return [pane.id]
         case .split(_, _, let first, let second): return first.paneIDs + second.paneIDs
         }
     }
@@ -126,16 +129,27 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
     func replacingPanes(_ transform: (GoviPaneRecord) -> GoviPaneRecord) -> Self {
         switch self {
         case .terminal(let pane): return .terminal(transform(pane))
-        case .web, .editor: return self
+        case .web, .editor, .mod: return self
         case .split(let vertical, let ratio, let first, let second):
             return .split(
                 vertical: vertical, ratio: ratio, first: first.replacingPanes(transform), second: second.replacingPanes(transform))
         }
     }
 
+    func replacingModPanes(_ transform: (GoviModPaneRecord) -> GoviModPaneRecord) -> Self {
+        switch self {
+        case .terminal, .web, .editor: return self
+        case .mod(let pane): return .mod(transform(pane))
+        case .split(let vertical, let ratio, let first, let second):
+            return .split(
+                vertical: vertical, ratio: ratio, first: first.replacingModPanes(transform),
+                second: second.replacingModPanes(transform))
+        }
+    }
+
     func replacingWebPanes(_ transform: (GoviWebPaneRecord) -> GoviWebPaneRecord) -> Self {
         switch self {
-        case .terminal, .editor: return self
+        case .terminal, .editor, .mod: return self
         case .web(let pane): return .web(transform(pane))
         case .split(let vertical, let ratio, let first, let second):
             return .split(
@@ -146,7 +160,7 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
 
     func replacingEditorPanes(_ transform: (GoviEditorPaneRecord) -> GoviEditorPaneRecord) -> Self {
         switch self {
-        case .terminal, .web: return self
+        case .terminal, .web, .mod: return self
         case .editor(let pane): return .editor(transform(pane))
         case .split(let vertical, let ratio, let first, let second):
             return .split(
@@ -168,6 +182,8 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
             return pane.isValid
         case .editor(let pane):
             return pane.isValid
+        case .mod(let pane):
+            return pane.isValid
         case .split(_, let ratio, let first, let second):
             return ratio.isFinite && ratio >= 0.05 && ratio <= 0.95 && first.validate(depth: depth + 1) && second.validate(depth: depth + 1)
         }
@@ -188,6 +204,10 @@ indirect enum GoviWorkspaceLayout: Codable, Equatable {
             var copy = pane
             copy.id = UUID()
             return copy
+        }.replacingModPanes { pane in
+            var copy = pane
+            copy.id = UUID()
+            return copy
         }
     }
 }
@@ -202,10 +222,10 @@ struct GoviWorkspaceRecord: Codable, Equatable, Identifiable {
 }
 
 struct GoviRecoveryCheckpoint: Codable, Equatable {
-    /// Version 2 adds browser panes and version 3 editor panes. Older
+    /// Version 2 adds browser panes, version 3 editor panes and version 4 mod panes. Older
     /// checkpoints still load; an older Govi rejects a newer version rather
     /// than misreading it.
-    static let currentVersion = 3
+    static let currentVersion = 4
     var version = Self.currentVersion
     var savedAt = Date()
     var workspaces: [GoviWorkspaceRecord]
