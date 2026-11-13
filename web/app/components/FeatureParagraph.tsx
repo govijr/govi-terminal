@@ -13,16 +13,15 @@ const iconProps = {
   strokeLinecap: "round",
   strokeLinejoin: "round",
   "aria-hidden": true,
-  className: "mr-[0.3vw] inline-block h-[1em] w-[1em] align-[-0.125em]",
+  className: "mr-1 inline-block h-[1em] w-[1em] align-[-0.125em]",
 } as const;
 
-// Tooltip geometry is in vw too, so it scales with the rest of the page. Pixel values
-// are derived from the window width at the moment the tooltip opens.
-const TIP_WIDTH_VW = 22.5;
-const GUTTER_VW = 1.25;
-const OFFSET_VW = 0.9;
+// Tooltip geometry in px; the card never grows wider than the window allows.
+const TIP_MAX_WIDTH = 300;
+const GUTTER = 16;
+const OFFSET = 10;
 
-type Tip = { token: string; left: number; top: number };
+type Tip = { token: string; left: number; top: number; width: number };
 
 // Each feature shows its title; hovering or focusing it opens the description
 // in a card filled with the title's color. The card is clamped to the viewport.
@@ -42,12 +41,11 @@ export function FeatureParagraph({ features }: { features: Feature[] }) {
   }, [tip]);
 
   function show(token: string, trigger: HTMLElement) {
-    const vw = window.innerWidth / 100;
-    const width = TIP_WIDTH_VW * vw;
+    const width = Math.min(TIP_MAX_WIDTH, window.innerWidth - GUTTER * 2);
     const rect = trigger.getBoundingClientRect();
     const center = rect.left + rect.width / 2;
-    const left = Math.min(Math.max(GUTTER_VW * vw, center - width / 2), window.innerWidth - GUTTER_VW * vw - width);
-    setTip({ token, left, top: rect.bottom + OFFSET_VW * vw });
+    const left = Math.min(Math.max(GUTTER, center - width / 2), window.innerWidth - GUTTER - width);
+    setTip({ token, left, top: rect.bottom + OFFSET, width });
   }
 
   const open = tip ? features.find((feature) => feature.token === tip.token) : undefined;
@@ -60,7 +58,7 @@ export function FeatureParagraph({ features }: { features: Feature[] }) {
             {index > 0 && " "}
             <span
               tabIndex={0}
-              className="inline-block cursor-default rounded-sm"
+              className="inline-block cursor-default rounded-sm outline-offset-2"
               style={{ color: `var(--feat-${feature.token})` }}
               onPointerEnter={(event) => {
                 if (event.pointerType === "mouse") show(feature.token, event.currentTarget);
@@ -81,11 +79,11 @@ export function FeatureParagraph({ features }: { features: Feature[] }) {
       {tip && open && (
         <div
           role="tooltip"
-          className="fixed z-10 rounded-lg p-[1.25vw] text-[1.25vw] leading-[1.5] font-normal shadow-lg first-letter:uppercase"
+          className="fixed z-10 rounded-lg px-3.5 py-3 text-sm leading-normal font-normal shadow-lg first-letter:uppercase"
           style={{
             left: tip.left,
             top: tip.top,
-            width: `${TIP_WIDTH_VW}vw`,
+            width: tip.width,
             backgroundColor: `var(--feat-${tip.token})`,
             color: "var(--feat-ink)",
           }}
