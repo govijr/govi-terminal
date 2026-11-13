@@ -606,13 +606,7 @@ struct GoviSettingsView: View {
             Text("Changes the interface only. Terminal colors stay exactly as defined by the selected theme.")
                 .font(GoviInk.font(11)).foregroundStyle(ui.muted)
             fontControls
-            Toggle(
-                "Show launch animation",
-                isOn: Binding(
-                    get: { UserDefaults.standard.bool(forKey: "GoviLaunchAnimation") },
-                    set: { UserDefaults.standard.set($0, forKey: "GoviLaunchAnimation") })
-            )
-            .help("Off by default so the terminal appears immediately. Applies on the next launch.")
+            GoviLaunchSettingsView()
             Divider().padding(.vertical, 4)
             HStack {
                 Text("Color themes").font(GoviInk.font(13).weight(.medium))

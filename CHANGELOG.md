@@ -13,6 +13,8 @@ follow [Semantic Versioning](https://semver.org/) once releases begin.
 
 ### Added
 
+- Launch wordmark settings: turn automatic playback on or off, choose personal
+  text, preview it, or reset to the original Govi signature.
 - Mods: folders with a `mod.json` that add web or terminal panes, command
   palette commands, shortcuts, event hooks, link handlers and a background
   service. Managed in Settings › Mods and with `govi mod`; see
