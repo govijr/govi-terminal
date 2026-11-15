@@ -1,19 +1,16 @@
 import SwiftUI
 import AppKit
-import GhosttyKit
 
-/// Launch splash: the signature is written stroke by stroke. A thick pen runs along
-/// hand-traced centerlines of the wordmark (in writing order) and reveals the real
-/// artwork beneath it, so the result is pixel-identical to the brand image.
+/// The original Govi artwork keeps its traced pen animation. Personal wordmarks
+/// reveal the exact filled shapes from the bundled Givi Signature font.
 struct GoviLaunchSplash: View {
-    @MainActor private static var shown = false
+    @MainActor private static var gate = GoviLaunchGate()
     /// True only for the first workbench of this app launch.
     @MainActor static func claim() -> Bool {
-        guard UserDefaults.standard.bool(forKey: "GoviLaunchAnimation") else { return false }
-        defer { shown = true }
-        return !shown
+        gate.claim(enabled: UserDefaults.standard.bool(forKey: GoviLaunchPreferences.enabledKey))
     }
 
+    var text = GoviLaunchPreferences.text
     let finish: () -> Void
     @Environment(\.goviPalette) private var ui
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -21,24 +18,35 @@ struct GoviLaunchSplash: View {
     @State private var settled = false
     @State private var leaving = false
     private static let image = NSImage(contentsOf: GoviResources.resourceURL.appendingPathComponent("Brand/GoviWordmark.png"))
-    private let size: CGFloat = 340
 
     var body: some View {
-        ZStack {
-            ui.canvas
-            if let image = Self.image {
-                let mark = ui.ink.mask(
-                    Image(nsImage: image).resizable().interpolation(.high).scaledToFit().colorInvert().luminanceToAlpha())
-                mark.mask {
-                    if settled {
-                        Color.black
-                    } else {
-                        GoviSignaturePen().trim(from: 0, to: progress)
-                            .stroke(style: StrokeStyle(lineWidth: size * 88 / GoviSignaturePen.canvas, lineCap: .round, lineJoin: .round))
+        GeometryReader { geometry in
+            ZStack {
+                ui.canvas
+                Group {
+                    if GoviLaunchPreferences.normalized(text) != GoviLaunchPreferences.defaultText,
+                        let font = GoviLaunchArtwork.font, let outline = GoviSignatureOutline(text: text, font: font)
+                    {
+                        GoviSignatureWordmark(outline: outline, progress: progress, settled: settled)
+                            .frame(width: min(620, geometry.size.width * 0.8), height: min(140, geometry.size.height * 0.55))
+                    } else if let image = Self.image {
+                        let size = min(340, geometry.size.width * 0.8, geometry.size.height)
+                        let mark = ui.ink.mask(
+                            Image(nsImage: image).resizable().interpolation(.high).scaledToFit().colorInvert().luminanceToAlpha())
+                        mark.mask {
+                            if settled {
+                                Color.black
+                            } else {
+                                GoviSignaturePen().trim(from: 0, to: progress)
+                                    .stroke(
+                                        style: StrokeStyle(
+                                            lineWidth: size * 88 / GoviSignaturePen.canvas, lineCap: .round, lineJoin: .round))
+                            }
+                        }
+                        .frame(width: size, height: size)
                     }
                 }
-                .frame(width: size, height: size)
-                .scaleEffect(leaving ? 1.04 : 1)
+                .scaleEffect(leaving && !reduceMotion ? 1.04 : 1)
             }
         }
         .ignoresSafeArea()
@@ -46,20 +54,109 @@ struct GoviLaunchSplash: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .task {
-            if reduceMotion {
-                settled = true
-                try? await Task.sleep(nanoseconds: 600_000_000)
-            } else {
-                try? await Task.sleep(nanoseconds: 150_000_000)
-                withAnimation(.timingCurve(0.45, 0.05, 0.35, 1, duration: 1.6)) { progress = 1 }
-                try? await Task.sleep(nanoseconds: 1_600_000_000)
-                withAnimation(.easeOut(duration: 0.2)) { settled = true }
-                try? await Task.sleep(nanoseconds: 350_000_000)
+            do {
+                if reduceMotion {
+                    settled = true
+                    try await Task.sleep(nanoseconds: 600_000_000)
+                } else {
+                    try await Task.sleep(nanoseconds: 150_000_000)
+                    withAnimation(.timingCurve(0.45, 0.05, 0.35, 1, duration: 1.6)) { progress = 1 }
+                    try await Task.sleep(nanoseconds: 1_600_000_000)
+                    withAnimation(.easeOut(duration: 0.2)) { settled = true }
+                    try await Task.sleep(nanoseconds: 350_000_000)
+                }
+                withAnimation(.easeInOut(duration: 0.45)) { leaving = true }
+                try await Task.sleep(nanoseconds: 450_000_000)
+                finish()
+            } catch {
+                // Dismissed and restarted animations must not finish a later replay.
             }
-            withAnimation(.easeInOut(duration: 0.45)) { leaving = true }
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            finish()
         }
+    }
+}
+
+private enum GoviLaunchArtwork {
+    static let font = GoviSignatureFont(url: GoviResources.resourceURL.appendingPathComponent("Fonts/\(GoviSignatureFont.fileName)"))
+}
+
+private struct GoviSignatureWordmark: View {
+    let outline: GoviSignatureOutline
+    var progress: CGFloat
+    var settled: Bool
+    @Environment(\.goviPalette) private var ui
+
+    var body: some View {
+        GeometryReader { geometry in
+            let rect = CGRect(origin: .zero, size: geometry.size).insetBy(dx: 1, dy: 1)
+            let shape = Path(outline.fittedPath(in: rect))
+            shape.fill(ui.ink)
+                .mask {
+                    if settled {
+                        Color.black
+                    } else {
+                        shape.trim(from: 0, to: progress)
+                            .stroke(style: StrokeStyle(lineWidth: outline.revealWidth(in: rect), lineCap: .round, lineJoin: .round))
+                    }
+                }
+        }
+    }
+}
+
+struct GoviLaunchSettingsView: View {
+    @Environment(\.goviPalette) private var ui
+    @AppStorage(GoviLaunchPreferences.enabledKey) private var enabled = false
+    @AppStorage(GoviLaunchPreferences.textKey) private var savedText = ""
+    @State private var text = ""
+    @State private var previewing = false
+    @State private var previewID = UUID()
+
+    private var problem: String? {
+        guard let font = GoviLaunchArtwork.font else {
+            return "The signature font is unavailable. The original Govi signature will be used."
+        }
+        let missing = font.unsupportedCharacters(in: GoviLaunchPreferences.normalized(text))
+        guard !missing.isEmpty else { return nil }
+        return "Your font doesn't include: \(missing.prefix(6).joined(separator: " ")). Your last valid wordmark is kept."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Play wordmark on launch", isOn: $enabled)
+                .help("Applies on the next app launch. Turn off to open directly into your workspace.")
+            HStack(spacing: 8) {
+                Text("Wordmark text").foregroundStyle(ui.muted)
+                TextField("Govi", text: $text)
+                    .textFieldStyle(.roundedBorder).accessibilityLabel("Launch wordmark text")
+                    .onChange(of: text) { value in
+                        if value.count > GoviLaunchPreferences.maximumLength {
+                            text = String(value.prefix(GoviLaunchPreferences.maximumLength))
+                        } else if problem == nil {
+                            savedText = value
+                        }
+                    }
+                Button("Reset") {
+                    text = ""
+                    savedText = ""
+                }.disabled(text.isEmpty && savedText.isEmpty)
+                Button("Preview") {
+                    previewID = UUID()
+                    previewing = true
+                }
+                .disabled(problem != nil)
+                .popover(isPresented: $previewing) {
+                    GoviLaunchSplash(text: GoviLaunchPreferences.normalized(text)) { previewing = false }
+                        .id(previewID).frame(width: 480, height: 280)
+                }
+            }
+            if let problem {
+                Text(problem).font(GoviInk.font(10)).foregroundStyle(.red)
+            } else {
+                Text("Givi Signature · Saved automatically · Up to 40 characters. Leave blank for the original Govi signature.")
+                    .font(GoviInk.font(10)).foregroundStyle(ui.muted)
+            }
+        }
+        .onAppear { text = savedText }
+        .onChange(of: savedText) { value in if text != value { text = value } }
     }
 }
 

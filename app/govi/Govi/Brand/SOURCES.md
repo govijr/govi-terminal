@@ -1,6 +1,7 @@
 # Brand assets and usage integration references
 
 - GoviWordmark.png: original image supplied by the user. Rendered as a theme-tinted mask without redrawing the lettering.
+- ../Fonts/GiviSignature-Medium.ttf: custom signature font created and supplied by the project owner, bundled unmodified for personal launch wordmarks. Copyright 2026 The Givi Signature Project Authors. SIL Open Font License 1.1; full notice in ../Licenses/GiviSignature-OFL.txt.
 - Claude, Codex/OpenAI, Cursor, Grok, OpenCode glyphs: vinzdg/codenotch, commit 183fc2f835dbe46855cf1bf0f7c03e05d5f811c8, windows/codenotch/glyphs. Original brands retain their marks. MIT notice included in ../Licenses/CodeNotch-LICENSE.txt.
 - File-type icons in ../FileIcons: material-extensions/vscode-material-icon-theme, npm material-icon-theme 5.40.0 (integrity sha512-IrvgusbwtqxhUtVgUy0nToJcfN7CYVRdbBxKMfbo0vab9flVBHA5INZ9UiE5SgRj+PM6opCl5nn5TZdpm2UaxA==), icons/*.svg copied unmodified. Language and product logos remain their owners' marks. MIT notice included in ../Licenses/MaterialIconTheme-LICENSE.txt.
 - Pi: official earendil-works/pi repository, apps/p2/public/icons/favicon.svg.

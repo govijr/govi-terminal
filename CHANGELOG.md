@@ -13,6 +13,8 @@ follow [Semantic Versioning](https://semver.org/) once releases begin.
 
 ### Added
 
+- Custom launch wordmarks using the supplied Givi Signature font, with saved
+  text, preview, reset and playback controls in Appearance settings.
 - Mods: folders with a `mod.json` that add web or terminal panes, command
   palette commands, shortcuts, event hooks, link handlers and a background
   service. Managed in Settings › Mods and with `govi mod`; see
