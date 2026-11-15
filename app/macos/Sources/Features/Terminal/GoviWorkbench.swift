@@ -67,7 +67,8 @@ struct GoviWorkbench<Content: View>: View {
     @AppStorage("GoviSidebar") private var sidebar = true
     @AppStorage("GoviSidebarWidth") private var sidebarWidth: Double = 228
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var splash = GoviLaunchSplash.claim()
+    @State private var splash = false
+    @State private var checkedLaunch = false
     @State private var splashReplayID = UUID()
     @State private var focusMode = false
     @State private var collapsedDirectories: Set<String> = []
@@ -253,6 +254,10 @@ struct GoviWorkbench<Content: View>: View {
     private var lifecycleWorkspace: some View {
         decoratedWorkspace
             .onAppear {
+                if !checkedLaunch {
+                    checkedLaunch = true
+                    splash = GoviLaunchSplash.claim()
+                }
                 refreshWindows()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { refreshWindows() }
                 if surface?.window?.isKeyWindow == true { navigation.record(surface?.id, panel: openPanel) }

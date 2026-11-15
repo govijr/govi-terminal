@@ -130,6 +130,8 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = Govi
           test -x "$app/Contents/MacOS/govi"
           test -f "$app/Contents/Resources/Govi/Licenses/Ghostty-LICENSE.txt"
+          test -f "$app/Contents/Resources/Govi/Fonts/GiviSignature-Medium.ttf"
+          test -f "$app/Contents/Resources/Govi/Licenses/GiviSignature-OFL.txt"
           test -f "$app/Contents/Resources/Govi/editor/vs/loader.js"
           codesign --verify --deep --strict "$app"
           "$app/Contents/MacOS/govi" --help > /dev/null
